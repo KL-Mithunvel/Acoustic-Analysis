@@ -40,6 +40,44 @@ def _round_or_none(value, ndigits):
     return round(float(value), ndigits)
 
 
+def conditioned_windows(clip, fs: float, cfg: dict) -> dict:
+    """Calibrate -> DC-remove -> locate the strike -> window and band-pass the
+    ring and decay. Shared by ``extract_features`` and the GUI plots so both see
+    exactly the same signal.
+
+    Returns ``{x, impact_index, pre_samples, noise_rms, ring, decay, ring_bp,
+    decay_bp, ref_pressure}``. Raises ``ValueError`` if the clip is too short or
+    the strike cannot be located.
+    """
+    ana, cap, oct_cfg, cal = cfg["analysis"], cfg["capture"], cfg["octave"], cfg["calibration"]
+    x = _to_mono(clip)
+    if x.size < 256:
+        raise ValueError("conditioned_windows: clip too short")
+
+    cpp = cal.get("counts_per_pascal") if cal.get("enabled") else None
+    x = cond.remove_dc(cond.apply_calibration(x, cpp))
+
+    pre = max(8, min(int(round(cap["pre_trigger_ms"] / 1000.0 * fs)), x.size // 4))
+    noise_rms = cond.rms(x[:pre])
+    impact = cond.detect_impact(x, pre, ana["impact_threshold_mult"])
+
+    ring = cond.window_relative(x, impact, fs, *ana["ring_window_ms"])
+    decay = cond.window_relative(x, impact, fs, *ana["decay_window_ms"])
+    low, high = ana["bandpass_hz"]
+    order = ana["bandpass_order"]
+    return {
+        "x": x,
+        "impact_index": int(impact),
+        "pre_samples": int(pre),
+        "noise_rms": float(noise_rms),
+        "ring": ring,
+        "decay": decay,
+        "ring_bp": cond.bandpass(ring, fs, low, high, order),
+        "decay_bp": cond.bandpass(decay, fs, low, high, order),
+        "ref_pressure": oct_cfg.get("reference_pressure_pa") if cpp else None,
+    }
+
+
 def extract_features(clip, fs: float, cfg: dict) -> dict:
     """Extract the full feature set from one clip.
 
@@ -60,56 +98,43 @@ def extract_features(clip, fs: float, cfg: dict) -> dict:
         returned early with only the validity fields plus ``impact_index=None``.
     """
     ana = cfg["analysis"]
-    cap = cfg["capture"]
     oct_cfg = cfg["octave"]
-    cal = cfg["calibration"]
 
-    x = _to_mono(clip)
-    if x.size < 256:
+    x_mono = _to_mono(clip)
+    if x_mono.size < 256:
         raise ValueError("extract_features: clip too short")
-
-    counts_per_pascal = cal.get("counts_per_pascal") if cal.get("enabled") else None
-    x = cond.remove_dc(cond.apply_calibration(x, counts_per_pascal))
-    ref_p = oct_cfg.get("reference_pressure_pa") if counts_per_pascal else None
-
-    pre_samples = int(round(cap["pre_trigger_ms"] / 1000.0 * fs))
-    pre_samples = max(8, min(pre_samples, x.size // 4))
-    noise_rms = cond.rms(x[:pre_samples])
 
     reasons: list[str] = []
     out: dict = {
         "sample_rate": int(fs),
-        "n_samples": int(x.size),
-        "noise_rms": float(noise_rms),
+        "n_samples": int(x_mono.size),
         "valid": True,
         "status": "OK",
         "reasons": reasons,
     }
 
     try:
-        impact = cond.detect_impact(x, pre_samples, ana["impact_threshold_mult"])
+        w = conditioned_windows(clip, fs, cfg)
     except ValueError as exc:
         out.update(valid=False, status="RETEST", impact_index=None)
         reasons.append(f"impact detection failed: {exc}")
         return out
-    out["impact_index"] = int(impact)
 
-    ring = cond.window_relative(x, impact, fs, *ana["ring_window_ms"])
-    decay_win = cond.window_relative(x, impact, fs, *ana["decay_window_ms"])
+    out["impact_index"] = w["impact_index"]
+    out["noise_rms"] = w["noise_rms"]
+    ring_bp = w["ring_bp"]
+    decay_bp = w["decay_bp"]
+    ref_p = w["ref_pressure"]
+    low, high = ana["bandpass_hz"]
+    fmin = max(20.0, float(low))
 
-    signal_rms = cond.rms(ring)
-    snr_db = 20.0 * np.log10(signal_rms / noise_rms) if noise_rms > 0 else float("inf")
+    signal_rms = cond.rms(w["ring"])
+    snr_db = 20.0 * np.log10(signal_rms / w["noise_rms"]) if w["noise_rms"] > 0 else float("inf")
     out["snr_db"] = float(snr_db)
     if snr_db < ana["min_snr_db"]:
         out["valid"] = False
         out["status"] = "RETEST"
         reasons.append(f"low SNR ({snr_db:.1f} dB < {ana['min_snr_db']} dB)")
-
-    low, high = ana["bandpass_hz"]
-    order = ana["bandpass_order"]
-    ring_bp = cond.bandpass(ring, fs, low, high, order)
-    decay_bp = cond.bandpass(decay_win, fs, low, high, order)
-    fmin = max(20.0, float(low))
 
     # --- spectrum ---
     freqs, mag = spec.fft_magnitude(ring_bp, fs)
@@ -170,7 +195,9 @@ def extract_features(clip, fs: float, cfg: dict) -> dict:
     out[f"leq_{wkind.lower()}_db"] = _round_or_none(
         sl.leq(wt.apply_weighting(ring_bp, fs, wkind), ref_pressure=ref_p), 2
     )
-    out["lpeak_db"] = _round_or_none(sl.lpeak(x[impact:], ref_pressure=ref_p), 2)
+    out["lpeak_db"] = _round_or_none(
+        sl.lpeak(w["x"][w["impact_index"] :], ref_pressure=ref_p), 2
+    )
     out["l_fast_max_db"] = _round_or_none(sl.time_weighted_max(ring_bp, fs, "fast", ref_p), 2)
     out["l_impulse_max_db"] = _round_or_none(
         sl.time_weighted_max(decay_bp, fs, "impulse", ref_p), 2
