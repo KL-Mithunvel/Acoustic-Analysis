@@ -4,65 +4,71 @@ Legend: 🔴 bug / rule violation | 🟡 incomplete feature | 🟢 not started |
 
 ## In Progress
 
-- [ ] 🟢 Repo scaffolding — `requirements.txt`, `config.yaml`, `acoustic_analysis/`
-  package skeleton (`__init__.py`, `__main__.py`, `config.py`, `cli.py`), `tests/`,
-  `.gitignore` (`data/`, `*.wav`, `venv/`). Docs done 2026-09-08 (README, docs/METHODS.md,
-  .CLAUDE/CLAUDE.md, CLAUDE-LOG.md).
+- [ ] 🟡 Phase 3 - I/O layer (`acoustic_analysis/io/`)
+  - [ ] `wavstore.py` - save_clip / load_clip (WAV + JSON sidecar)
+  - [ ] `dataset.py` - SQLite: sessions / clips / features / labels; add/query/export_csv
+  - [ ] `recorder.py` - sounddevice InputStream wrapper: list_devices, input gain,
+    pre-trigger ring buffer, RMS / manual trigger, live-monitor block callback
+  - [ ] `audio_out.py` - playback (sounddevice OutputStream) for A/B listening
+- [ ] 🟡 Phase 3.5 - pure noise / filter modules (`acoustic_analysis/dsp/`)
+  - [ ] `filters.py` - composable FilterChain (bandpass + notch list + weighting),
+    `.apply(x, fs)` and `.frequency_response(fs)` for the Bode plot
+  - [ ] `noise.py` - noise profile (spectrum / octave / Ln / broadband level) +
+    spectral subtraction / spectral gating denoise with adjustable strength
+  - [ ] `environment.py` - environmental noise: NC rating, octave spectrum, Leq / L90 /
+    L10, dominant tones over a long recording
+- [ ] 🟡 Phase 4 - CLI (`cli.py`): `devices`, `analyze <path|dir>`, `noise <path>`,
+  `calibrate <tone.wav>`, `export`
+- [ ] 🟡 Phase 5 - classification (`acoustic_analysis/classify/`)
+  - [ ] `reference.py` - ReferenceProfile.build / compare / save / load
+  - [ ] `rules.py` - grade(features, profile, cfg) per docs/METHODS.md section 6.3
+- [ ] 🟡 Phase 6 - GUI (`acoustic_analysis/app/`), plain `ttk.Notebook` tabs first,
+  instrument-look restyle after (see `docs/UI_DESIGN.md`)
+  - [ ] `main_window.py` + `state.py` - Tk root, notebook, background worker thread
+  - [ ] `widgets.py` - reusable plot panel (title + "what is this" info toggle),
+    param slider, level meter, feature table
+  - [ ] Monitor tab - device pick, gain, level meter, live spectrum + spectrogram,
+    OS-enhancement warning
+  - [ ] Analyze tab - one clip: waveform, spectrum, 1/3-octave, energy-decay curve,
+    feature table; every panel has an explanation
+  - [ ] Filters tab - live filter-chain params, frequency-response (Bode) plot,
+    before/after spectrum + spectrogram, A/B listen
+  - [ ] Compare tab - N clips overlaid + "what differs most" table
+  - [ ] Noise tab - noise-profile capture, environmental analysis, denoise preview
+  - [ ] Record tab - arm / trigger / record, save into a session
+  - [ ] Label tab - class + grader + notes, add-to-reference
+  - [ ] Dataset tab - clip table, filter, export, delete, per-clip report
+  - [ ] Calibrate tab - reference-tone -> counts_per_pascal workflow
+  - [ ] Learn tab - synthesise a tone/decay, apply a filter, watch what changes
+  - [ ] Settings tab - config presets, paths
+  - [ ] Instrument-look restyle: `theme.py` (dark), fixed top status bar,
+    persistent button rail, bottom soft-key bar (`docs/UI_DESIGN.md`)
+- [ ] 🟡 Phase 7 - polish
+  - [ ] Fill `docs/EXPLAIN.md` (the text behind every info panel)
+  - [ ] PyInstaller one-file Windows build
+  - [ ] Sync `.CLAUDE/CLAUDE.md` / `README.md` / `docs/METHODS.md` to the built state
 
 ## Not Started
 
-### DSP core (`acoustic_analysis/dsp/`) — pure, do first, one pytest module each
-- [ ] 🟢 `conditioning.py` — `remove_dc`, `apply_calibration`, `bandpass`, `detect_impact`,
-  `window_ring` / `window_decay`. Tests: synthetic step + noise → known impact index.
-- [ ] 🟢 `spectrum.py` — `fft_magnitude` (Hann), `dominant_frequency`, `pick_peaks` (freq,
-  amp, Q), `spectral_centroid` / `bandwidth` / `rolloff` / `flatness`. Tests: known
-  multi-tone → known peaks/centroid.
-- [ ] 🟢 `octave_bands.py` — IEC 61260 base-2 band edges, `fractional_octave_levels(x, fs, n)`,
-  normalisation, band ratios. Tests: white noise → flat band levels; single tone → one band.
-- [ ] 🟢 `decay.py` — `envelope` (Hilbert), `reverb_time` (T20/T30), `decay_rate`,
-  `per_band_decay`. Tests: synthetic `A·e^(−t/τ)·sin` → recovered τ.
-- [ ] 🟢 `weighting.py` — A / C / Z IIR filters (IEC 61672). Tests: 1 kHz gain = 0 dB for
-  A and C; known A-weight at 100 Hz / 10 kHz within tolerance.
-- [ ] 🟢 `sound_level.py` — `leq`, `lpeak`, Fast/Slow/Impulse exponential time weighting,
-  `percentile_levels` (Ln). Tests: constant tone → Leq = level; burst → Impulse hold.
-- [ ] 🟢 `loudness.py` *(deferred)* — equal-loudness-contour phon/sone.
-
-### Feature orchestration
-- [ ] 🟢 `features.py` — `extract_features(clip, fs, cfg) -> dict` wiring all of `dsp/*`.
-  Test: end-to-end on a synthetic "good" vs "cracked" pair → expected feature deltas.
-
-### Audio + data I/O (`acoustic_analysis/io/`)
-- [ ] 🟢 `recorder.py` — `sounddevice.InputStream` wrapper, pre-trigger ring buffer,
-  RMS / manual trigger, `list_devices()`. Hardware wrapper — not unit-tested; the
-  file-import path is its simulated equivalent.
-- [ ] 🟢 `wavstore.py` — `save_clip` / `load_clip` (WAV + JSON sidecar with metadata).
-- [ ] 🟢 `dataset.py` — SQLite store: `clips`, `features`, `labels` tables;
-  `add_clip`, `set_features`, `set_label`, `export_csv` / `export_parquet`.
-
-### CLI
-- [ ] 🟢 `cli.py` — `devices`, `analyze <path|dir> [--export csv]`, `export`.
-
-### Classification (`acoustic_analysis/classify/`)
-- [ ] 🟢 `reference.py` — `ReferenceProfile.build(good_clips)` / `.compare(features)`.
-- [ ] 🟢 `rules.py` — `grade(features, profile, cfg)` per docs/METHODS.md §6.3.
-
-### GUI (`acoustic_analysis/app/`) — Tkinter, thin
-- [ ] 🟢 `main_window.py` — Tk root, tab container, background analysis thread, shared state.
-- [ ] 🟢 `record_tab.py` — device pick, level meter, arm/record, save.
-- [ ] 🟢 `analyze_tab.py` — embedded matplotlib: waveform, spectrum, 1/3-octave bars,
-  decay waterfall; overlay two clips / clip vs reference.
-- [ ] 🟢 `label_tab.py` — assign class + grader + notes; mark for reference set.
-- [ ] 🟢 `dataset_tab.py` — table of clips + labels + key features; export button.
-
-### Later
-- [ ] 🟢 Package as a Windows executable (PyInstaller) for non-Python users.
+- [ ] 🟢 `dsp/loudness.py` - equal-loudness-contour phon/sone (deferred)
+- [ ] 🟢 Repeatability view - tap one part N times, show the spread of every feature
+- [ ] 🟢 Per-clip PDF / PNG analysis report export
+- [ ] 🟢 Reference-profile overlay (golden band shape +/- tolerance) on the octave chart
+- [ ] 🟢 Waveform region markers (impact / ring / decay), draggable
 - [ ] 🟢 Collect a real dataset (good + cracked + corner-broken tiles) and tune every
-  threshold in `config.yaml` against it — currently all placeholders.
-- [ ] 🟢 Confirm Windows mic enhancements disabled + run a pistonphone calibration.
+  threshold in `config.yaml` against it - currently all placeholders
+- [ ] 🟢 Confirm Windows mic enhancements disabled + run a pistonphone calibration on the
+  real mic
 - [ ] 🟢 Train a classifier on the exported dataset (separate repo); document the export
-  schema it expects.
+  schema it expects
 
 ## Done
 
-- [x] Repository created, MIT licence, standalone-repo docs written (README,
-  docs/METHODS.md, .CLAUDE/CLAUDE.md, CLAUDE-LOG.md) — 2026-09-08.
+- [x] Repository created, MIT licence, standalone-repo docs (README, docs/METHODS.md,
+  .CLAUDE/CLAUDE.md, CLAUDE-LOG.md) - 2026-09-08.
+- [x] Phase 0 - scaffold: requirements, config.yaml, config.py, pytest harness,
+  tests/synth.py - commit bb6cf5a (2026-09-09).
+- [x] Phase 1 - DSP core: conditioning, spectrum, octave_bands, decay (Schroeder EDC),
+  weighting (A/C/Z, IEC 61672), sound_level - commits 0e1cb9b, 59af2be, 2c982cd.
+- [x] Phase 2 - `features.extract_features` orchestrator + validity gate - commit 252bea7.
+  83 tests passing.

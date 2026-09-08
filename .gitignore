@@ -18,6 +18,12 @@ __pycache__/
 build/
 dist/
 
+# Images - third-party reference screenshots kept local only.
+# App screenshots for the README get force-added when needed.
+*.png
+*.jpg
+*.jpeg
+
 # Editors / OS
 .idea/
 .vscode/
