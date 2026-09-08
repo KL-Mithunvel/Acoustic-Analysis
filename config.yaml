@@ -25,6 +25,7 @@ calibration:
 analysis:
   bandpass_hz: [300, 18000]     # provisional
   bandpass_order: 4
+  notches: []                   # list of [freq_hz, Q] to notch out fixed tones (mains hum, motor whine)
   impact_threshold_mult: 5.0    # impact = first sample above (mult * pre-impact RMS)
   impact_skip_ms: 5             # discard this much immediately after the detected impact
   ring_window_ms: [5, 250]      # relative to impact - FFT / spectral / octave features
@@ -39,6 +40,18 @@ octave:
 
 weighting:
   default: Z                    # A | C | Z ; Z = flat, recommended for NDT
+
+noise:
+  stft_nperseg: 2048
+  method: subtraction           # subtraction | gate
+  strength: 1.0                  # over-subtraction factor / gate margin
+  floor_db: -25.0               # residual floor relative to each bin
+  apply_in_analysis: false      # run feature extraction on the denoised signal too
+
+environment:
+  nc_report: true               # compute a Noise Criterion rating for environment recordings
+  tone_min_prominence_db: 6.0   # a spectral peak this far above its surroundings counts as a tone
+  tone_count: 5
 
 spectrum:
   n_peaks: 3
