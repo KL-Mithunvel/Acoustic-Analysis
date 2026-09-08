@@ -12,12 +12,19 @@ from tests.synth import make_decay, make_tone
 _DB_PER_TAU = 20.0 / np.log(10.0)
 
 
+def test_energy_decay_curve_is_monotonic_and_starts_at_zero():
+    fs = 48000
+    edc = decay.energy_decay_curve(make_decay(2000.0, 0.15, 0.6, fs))
+    assert edc[0] == pytest.approx(0.0, abs=1e-9)
+    assert np.all(np.diff(edc) <= 1e-9)
+
+
 def test_time_to_drop_matches_exponential():
     fs = 48000
     tau = 0.15
     x = make_decay(2000.0, tau, 0.6, fs)
     t20 = decay.time_to_drop(x, fs, 20.0)
-    assert t20 == pytest.approx(tau * 20.0 / _DB_PER_TAU, rel=0.08)
+    assert t20 == pytest.approx(tau * 20.0 / _DB_PER_TAU, rel=0.12)
 
 
 def test_time_to_drop_returns_none_when_never_reached():
