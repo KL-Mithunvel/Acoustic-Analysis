@@ -117,9 +117,13 @@ Computed on the pre-impact window; marks a clip **RETEST** rather than grading i
 |---|---|
 | Sound power (ISO 3744 / 3745) | needs a steady source, an enclosing measurement surface, and an (hemi-)anechoic room — none apply to a single impulse |
 | Sound intensity, absorption tests | measure room / material acoustic properties, not part integrity |
-| Noise Criterion (NC) curves | a room-noise rating, not a part metric — useful once, to qualify the test enclosure |
 | Closed-loop acoustic control (SISO/MIMO) | this app generates no sound. The "reference profile + alarm + abort band" idea *is* borrowed — see §6 |
-| Zwicker/Moore ISO 532 loudness, sharpness, roughness, fluctuation strength | out of scope for v0.1; classical equal-loudness loudness only, and that is planned not built |
+| Zwicker/Moore ISO 532 loudness, sharpness, roughness, fluctuation strength | out of scope for v0.1; classical equal-loudness loudness only, and that is deferred, not built (`dsp/loudness.py`) |
+
+**Noise Criterion (NC)** *is* implemented (`dsp/environment.py`) — not as a part metric
+but to qualify the test environment: `nc_rating` by the tangency method against the
+NC-15..70 curves, with Leq / L10 / L50 / L90 and a dominant-tone finder. Use the Noise
+screen or `cli noise`.
 
 ## 6. Labelling and classification
 
@@ -186,5 +190,6 @@ within one recording session on one mic.
 |---|---|
 | IEC 61260-1 / ANSI S1.11 | fractional-octave-band filter design |
 | IEC 61672-1 | A / C / Z frequency weighting, time weighting |
-| ISO 532 | (not implemented) psychoacoustic loudness |
+| ISO 3382 | reverberation time by Schroeder backward integration (`dsp/decay.py`) |
+| ISO 532 | (deferred) psychoacoustic loudness |
 | ISO 3744 / 3745 | (not implemented) sound power |

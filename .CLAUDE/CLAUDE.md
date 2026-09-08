@@ -25,15 +25,16 @@ dataset for training a classifier.
   No import goes either direction; code is copied by hand when needed.
 - **Runtime:** Python 3.13+. GUI: Tkinter. DSP: numpy / scipy. Audio: sounddevice /
   soundfile. Plots: matplotlib. Storage: SQLite. Config: YAML. Tests: pytest.
-- **Status:** v0.1, in active build. DSP core + `features.py` are done and tested
-  (Phases 0-2, 83 tests). `io/`, `classify/`, `app/` and the noise/filter `dsp` modules
-  are next — see `TODO.md` for the phase plan and `docs/UI_DESIGN.md` for the GUI.
-  Sections below marked `[built]` are real; the rest is planned - keep in sync as
-  modules land.
-- **Entry points (planned):**
-  - `python -m acoustic_analysis` — GUI
-  - `python -m acoustic_analysis.cli devices` — list input devices
-  - `python -m acoustic_analysis.cli analyze <path|dir> [--export features.csv]` — headless
+- **Status:** v0.1, end-to-end working. DSP core, feature extraction, noise/filter
+  modules, I/O (WAV + SQLite + recorder + playback), rule-based classification, the
+  headless CLI, and the full Tkinter GUI (11 screens, dark instrument-look shell) are
+  all built and tested - 133 tests. Not yet done: real-mic verification, pistonphone
+  calibration against hardware, threshold tuning on real tiles, PyInstaller build,
+  `dsp/loudness.py`. See `TODO.md`.
+- **Entry points:**
+  - `python -m acoustic_analysis` — GUI (Analyze / Compare / Filters / Noise / Monitor /
+    Record / Label / Dataset / Calibrate / Learn / Settings)
+  - `python -m acoustic_analysis.cli devices | analyze | noise | calibrate | export`
 
 ---
 
@@ -68,50 +69,49 @@ dependency is a microphone (`io/recorder.py`); the simulated equivalent, per
 
 ## Architecture
 
-> DSP core + `features.py` are built (Phases 0-2). `io/`, `classify/`, `app/` and the
-> extra `dsp` modules below are planned - update as they land. Build order and the
-> GUI screen list are in `TODO.md`; the GUI look is in `docs/UI_DESIGN.md`.
+Everything below is built and tested unless marked otherwise.
 
 ```
 acoustic_analysis/
-  __init__.py
-  __main__.py           launches the GUI
-  config.py             load_config / resolve_path            [built]
+  __main__.py           launches the GUI (falls back to CLI help)
+  config.py             load_config / resolve_path
   cli.py                devices | analyze | noise | calibrate | export
   dsp/                  PURE - numpy array in, numbers out, no audio/file/GUI I/O
-    conditioning.py     remove_dc, apply_calibration, bandpass, detect_impact, window_*   [built]
-    spectrum.py         fft_magnitude, dominant_frequency, pick_peaks, spectral_*         [built]
-    octave_bands.py     fractional_octave_levels, band_shape, band_ratios (IEC 61260)     [built]
-    decay.py            energy_decay_curve (Schroeder), reverb_time, decay_rate, per_band_decay  [built]
-    weighting.py        a/c/z weighting (IEC 61672)                                        [built]
-    sound_level.py      leq, lpeak, exp time weighting, percentile_levels                 [built]
+    conditioning.py     remove_dc, apply_calibration, bandpass, detect_impact, window_relative
+    spectrum.py         fft_magnitude, dominant_frequency, pick_peaks, spectral_*
+    octave_bands.py     octave_band_frequencies, fractional_octave_levels, band_shape, band_ratios
+    decay.py            energy_decay_curve (Schroeder), reverb_time, decay_rate, per_band_decay
+    weighting.py        A/C/Z weighting (IEC 61672 -> bilinear -> SOS)
+    sound_level.py      leq, lpeak, exp_time_weight (fast/slow/impulse), percentile_levels
     filters.py          FilterChain: bandpass + notches + weighting; .apply / .frequency_response
-    noise.py            noise profile + spectral subtraction / gating denoise
-    environment.py      NC rating, octave spectrum, Leq/L90/L10, dominant tones
-    loudness.py         equal-loudness-contour phon/sone   (deferred)
-  features.py           extract_features(clip, fs, cfg) -> dict   (orchestrates dsp/*)    [built]
+    noise.py            noise_profile, reduce_noise (STFT spectral subtraction / gating)
+    environment.py      nc_rating, dominant_tones, environmental_analysis
+    loudness.py         equal-loudness-contour phon/sone   [DEFERRED - not written]
+  features.py           conditioned_windows (shared), extract_features -> flat dict + validity gate
   classify/
     reference.py        ReferenceProfile.build / compare / save / load
-    rules.py            grade(features, profile, cfg) -> good / borderline / defective / retest
-  io/
-    recorder.py         sounddevice InputStream wrapper: devices, gain, ring buffer, trigger, live monitor
-    audio_out.py        sounddevice OutputStream playback (A/B listening)
-    wavstore.py         save_clip / load_clip  (WAV + JSON sidecar)
-    dataset.py          SQLite: sessions / clips / features / labels; add / query / export_csv
-  app/                  Tkinter, laptop desktop, mouse+keyboard. Plain ttk.Notebook tabs
-                        first, then an instrument-look restyle (docs/UI_DESIGN.md)
-    main_window.py      Tk root, notebook/shell, background worker thread, shared state
-    state.py            SharedState - thread-safe latest-value store
-    widgets.py          plot panel (+ "?" explainer), param slider, level meter, feature table
-    screen_*.py         monitor / record / analyze / compare / filters / noise / label /
-                        dataset / calibrate / learn / settings
-    theme.py            dark instrument ttk style + dark matplotlib style   (restyle phase)
+    rules.py            grade(features, profile, cfg) -> RETEST/UNGRADED/GOOD/BORDERLINE/DEFECTIVE
+  io/                   the only modules that touch mic / speakers / disk / db
+    recorder.py         list_input_devices, LiveMonitor, Recorder (manual/rms trigger)  [hardware - smoke only]
+    audio_out.py        peak-limited playback                                           [hardware - smoke only]
+    wavstore.py         save_clip / load_clip (float WAV + JSON sidecar)
+    dataset.py          SQLite: sessions / clips / features / labels; export_csv / export_json
+  app/                  Tkinter, laptop desktop, dark instrument-look shell
+    main_window.py      Tk root, status bar + notebook + button rail + soft-key bar, worker poll
+    theme.py            dark ttk style + matching matplotlib rcParams
+    state.py            SharedState + ClipData - thread-safe clip list, selection, profile
+    service.py          AnalysisService - feature extraction + grade on a worker thread
+    explain.py          loads docs/EXPLAIN.md -> Explainer facade
+    plots.py            draw_* functions onto a given Axes (Agg-testable)
+    widgets.py          MplPanel (figure + "?" popup), FeatureTree, info_button
+    screens.py          Analyze, Compare, Filters, Noise, Label, Dataset, Learn
+    screens_live.py     Monitor, Record, Calibrate, Settings
 config.yaml             all tunable parameters
-tests/                  one module per pure module, synthetic signals
-data/                   recordings/, acoustic_analysis.sqlite, exports/   (git-ignored)
+tests/                  test_<module>.py, synthetic signals; test_app_gui_smoke.py (skips w/o display)
+data/                   recordings/, acoustic_analysis.sqlite, exports/, presets/  (git-ignored)
 docs/METHODS.md         analysis methods + standards
 docs/UI_DESIGN.md       GUI layout and the instrument look
-docs/EXPLAIN.md         the text behind every in-app "what is this" panel
+docs/EXPLAIN.md         the text behind every in-app "?" panel
 ```
 
 ### Data flow (per clip)
@@ -154,21 +154,25 @@ the dev-machine path and exercises the entire pipeline downstream of capture.
 
 ## Key Modules
 
-> Planned interfaces — fill in real signatures, return types, and raised exceptions as
-> each module is written. Until then, `docs/METHODS.md` is the spec.
+`docs/METHODS.md` §3 is the spec for what each `dsp` function computes and the standard
+it follows; `docs/EXPLAIN.md` is the user-facing version of the same.
 
-- **`config.py`** — `load_config(path=None) -> dict`. Reads `config.yaml` from the repo
-  root (or a given path). No other responsibility.
+- **`config.py`** — `load_config(path=None) -> dict`, `resolve_path(cfg, key)` (repo-root
+  anchored), `repo_root()`.
 - **`dsp/*`** — pure functions, each covered by `tests/test_<module>.py` with synthetic
-  signals. See `docs/METHODS.md` §3 for what each computes and the standard it follows.
-- **`features.py`** — `extract_features(clip: np.ndarray, fs: int, cfg: dict) -> dict`.
-  The single orchestration point; the dict it returns is the dataset row and the
-  classifier input.
-- **`classify/`** — rule-based grading against a reference profile built from known-good
-  clips. `docs/METHODS.md` §6.
-- **`io/`** — the only modules that touch the mic, the filesystem, or SQLite. Not unit
-  tested (hardware/IO wrappers); smoke-tested manually.
-- **`app/`** — Tkinter, thin. Widgets wired to backend calls; no analysis logic here.
+  signals whose correct output is hand-derivable.
+- **`features.py`** — `conditioned_windows(clip, fs, cfg)` does the shared
+  calibrate → impact → window → band-pass and is used by both `extract_features` and
+  `app/plots.py` so the GUI shows exactly the analysed signal. `extract_features` returns
+  a flat dict + `valid`/`status`/`reasons`; the dict is the dataset row and the classifier
+  input.
+- **`classify/`** — `ReferenceProfile` (mean/std of scalar features + octave shape,
+  z-score `compare`); `grade()` rule verdict + reasons, thresholds from `config.grading`.
+- **`io/`** — mic / speakers / disk / SQLite wrappers. `recorder`/`audio_out` are
+  hardware, lazy-import `sounddevice`, smoke-tested only.
+- **`app/`** — Tk on the main thread, `AnalysisService` worker off it. `plots.py` and
+  `explain.py` are Tk-free and unit-tested; the screens are covered by
+  `test_app_gui_smoke.py` (constructs the window, analyses a clip, visits every tab).
 
 ---
 
@@ -177,11 +181,14 @@ the dev-machine path and exercises the entire pipeline downstream of capture.
 | Path | What | Git |
 |---|---|---|
 | `config.yaml` | all tunable parameters (audio device, sample rate, window timings, band-pass, octave fraction, weighting, calibration factor, label set, paths) | tracked |
-| `data/recordings/` | captured / imported WAV clips + JSON sidecars | ignored |
-| `data/acoustic_analysis.sqlite` | clips / features / labels database | ignored |
-| `data/exports/` | CSV / Parquet feature-dataset exports | ignored |
+| `data/recordings/` | saved clip WAVs + JSON sidecars | ignored |
+| `data/acoustic_analysis.sqlite` | sessions / clips / features / labels | ignored |
+| `data/exports/` | CSV / JSON feature-dataset exports | ignored |
+| `data/reference_profile.json` | the active reference profile (auto-loaded on start) | ignored |
+| `data/presets/` | saved config presets | ignored |
 
-`.gitignore` covers `data/`, `*.wav`, `venv/`. Audio datasets are never committed.
+`.gitignore` covers `data/`, `venv/`, `*.wav`, `*.sqlite`, and images (the CoCo-80X
+reference screenshot in `docs/` stays local). Audio datasets are never committed.
 
 ---
 
@@ -203,18 +210,27 @@ the dev-machine path and exercises the entire pipeline downstream of capture.
 
 ## Known Technical Debt
 
-- DSP core + `features.py` are built and tested; `io/`, `classify/`, `app/` and the
-  noise/filter `dsp` modules are still planned (see `TODO.md`).
-- Every threshold that will land in `config.yaml` (band-pass edges, impact multiplier,
-  window timings, grading limits) is a placeholder — none tuned against real recordings.
-- No calibration path yet; levels will be relative until a pistonphone calibration is
-  implemented and run (`docs/METHODS.md` §7).
-- `dsp/loudness.py` (equal-loudness-contour loudness) is deferred, not designed.
-- The label taxonomy in `config.yaml` (`good` / `cracked` / `corner_broken` /
-  `other_defect`) is provisional — no labelled data exists to validate it against.
-- No real damaged-tile recordings exist. Calibration and threshold tuning are blocked on
-  getting good *and* defective sample parts.
-- Windows-only audio testing; Linux/macOS device handling unverified.
+- **Every threshold in `config.yaml` is provisional** — band-pass edges, impact
+  multiplier, window timings, SNR floor, all of `grading` — none tuned against real
+  recordings. Marked `provisional` in the file.
+- **Never run against a real microphone.** `io/recorder.py` / `audio_out.py` are written
+  and smoke-tested (`list_input_devices` works, 12 devices found) but a full
+  capture → analyse loop with a real mic has not happened. Live monitoring and the
+  Record screen are unverified end to end.
+- **No calibration performed.** `calibrate` (CLI + screen) is implemented; no pistonphone
+  tone has been measured, so levels are relative (dBFS-referenced), not dB SPL.
+- **No real tile recordings.** No reference profile exists; grading is untested on real
+  good vs defective parts. Label taxonomy (`good`/`cracked`/`corner_broken`/`other_defect`)
+  is a guess.
+- `dsp/loudness.py` (equal-loudness-contour phon/sone) — deferred, not written.
+- Denoise (`noise.reduce_noise`) can run in the analysis path (`noise.apply_in_analysis`)
+  but features from denoised audio are not validated and can mislead.
+- GUI verified by a construction/smoke test + one manual 3 s launch; no sustained
+  interactive session or usability pass.
+- `bilinear` A/C weighting drifts from the IEC curve above ~5 kHz (no pre-warp) — fine
+  for a feature, not for certified SLM use. Noted in `weighting.py`.
+- No PyInstaller build yet — runs from source only.
+- Windows-only. Linux/macOS audio-device handling unverified.
 
 ---
 

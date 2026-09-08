@@ -10,8 +10,11 @@ impact and reading its ringing response to tell a sound part from a cracked one.
 first use case is clay/ceramic roofing tiles, but nothing in the analysis is
 tile-specific.
 
-> **Status: early scaffolding (v0.1).** The design and documentation are in place; the
-> Python package is being built module by module. See [`TODO.md`](TODO.md).
+> **Status: v0.1, working end to end.** DSP core, feature extraction, noise + filter
+> tools, WAV/SQLite storage, rule-based grading, a headless CLI and an 11-screen
+> Tkinter GUI (styled like a handheld analyser) are all built and tested (133 tests).
+> Not yet done: real-microphone verification, pistonphone calibration, threshold
+> tuning on real tiles, a packaged executable. See [`TODO.md`](TODO.md).
 
 > Part of the **Tile Sorting** automated inspection project (VIT Chennai,
 > BMEE497J/BMHA497J). This repo is deliberately standalone and reusable — the tile line
@@ -30,26 +33,36 @@ so a model can learn the boundary.
 
 ## Features
 
-Working toward v0.1:
-
-- **Capture** — record clips from any input device (`sounddevice`), with a pre-trigger
-  ring buffer and an amplitude trigger, or import existing WAV files.
+- **Capture** — record clips from any input device (`sounddevice`) with a pre-trigger
+  ring buffer and manual/amplitude trigger, or import WAV files (many at once).
 - **Analysis suite** (see [`docs/METHODS.md`](docs/METHODS.md)):
   - fractional-octave-band levels (1/1 … 1/12 octave, IEC 61260 band edges)
-  - FFT spectrum + descriptors: dominant frequency, peak list with Q, spectral
+  - FFT spectrum + descriptors: dominant frequency, peaks with Q, spectral
     centroid / bandwidth / roll-off / flatness
-  - decay analysis: Hilbert envelope, T20 / T30, exponential decay rate, **per-octave-band
+  - decay: Schroeder energy-decay curve, T20 / T30, decay rate, **per-octave-band
     decay rate** (the damping signature of a crack)
   - level metrics: L_eq, L_peak, Fast/Slow/Impulse time weighting, statistical levels Ln
   - A / C / Z frequency weighting (IEC 61672)
-  - equal-loudness-contour loudness in sones *(planned)*
-- **Visualise** — embedded plots: waveform, spectrum, 1/3-octave bar chart, decay
-  waterfall; overlay two clips or a clip against a reference profile.
-- **Label** — assign a quality class (configurable set) with grader + notes; build a
-  golden reference profile from known-good clips.
-- **Dataset** — every clip + its features + its label in a local SQLite database;
-  one-click export to CSV / Parquet for model training.
-- **Headless CLI** — analyse a file or a folder and dump features without opening the GUI.
+  - equal-loudness-contour loudness in sones *(deferred)*
+- **Compare** — several clips overlaid on spectrum / octave / decay, with a ranked
+  "biggest differences" view.
+- **Filters** — the whole filter chain (band-pass + notches + weighting) with
+  live-editable parameters, a frequency-response plot, and before/after of the selected
+  clip. What you see is what feeds analysis.
+- **Noise** — capture a noise profile, run environmental analysis (Leq, L10/50/90, NC
+  rating, dominant tones), and preview spectral-subtraction denoising.
+- **Label & dataset** — assign a quality class + grader + notes; build a reference
+  profile from flagged clips; everything in a local SQLite database; export to CSV / JSON
+  for model training.
+- **Grade** — rule-based GOOD / BORDERLINE / DEFECTIVE / RETEST against the reference,
+  with the reasons that decided it.
+- **Learn** — a synthetic-signal bench and a glossary, because every chart in the app
+  also carries a "?" that explains what it is.
+- **Headless CLI** — `devices`, `analyze`, `noise`, `calibrate`, `export`.
+
+The GUI is a plain windowed Tkinter app styled like a handheld acoustic analyser: a dark
+screen, a fixed top status bar, a persistent button rail, and a per-screen soft-key row
+(see [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md)).
 
 ## Requirements
 
@@ -80,9 +93,11 @@ python -m acoustic_analysis.cli devices
 # Launch the GUI
 python -m acoustic_analysis
 
-# Or analyse files headlessly
+# Or headlessly
 python -m acoustic_analysis.cli analyze recordings\tile_0001.wav
-python -m acoustic_analysis.cli analyze recordings\ --export features.csv
+python -m acoustic_analysis.cli analyze recordings\ --export features.csv --profile ref.json
+python -m acoustic_analysis.cli noise room.wav
+python -m acoustic_analysis.cli calibrate pistonphone.wav --level-db 94
 ```
 
 Run the tests:
@@ -96,23 +111,22 @@ python -m pytest -q
 ```
 acoustic_analysis/
   config.py            load config.yaml
-  cli.py               headless: devices | analyze | export
+  cli.py               headless: devices | analyze | noise | calibrate | export
   dsp/                 PURE signal processing — numpy in, numbers out, no I/O
-    conditioning.py      DC removal, calibration, band-pass, impact detection, windowing
-    spectrum.py          FFT + spectral descriptors + peak picking
-    octave_bands.py      fractional-octave-band levels (IEC 61260)
-    weighting.py         A / C / Z weighting (IEC 61672)
-    sound_level.py       L_eq, L_peak, time weighting, statistical levels
-    decay.py             envelope, T20/T30, decay rate, per-band decay
-    loudness.py          equal-loudness-contour loudness  (planned)
-  features.py          orchestrates dsp/* -> one feature dict per clip
-  classify/            reference profile + rule-based grading
-  io/                  recorder (sounddevice), wavstore, dataset (SQLite)
-  app/                 Tkinter GUI (thin — wires widgets to the backend)
+    conditioning · spectrum · octave_bands · decay · weighting · sound_level
+    filters (chain + Bode) · noise (profile + denoise) · environment (NC / Ln / tones)
+  features.py          conditioned_windows + extract_features -> one dict per clip
+  classify/            reference.py (profile) + rules.py (grade)
+  io/                  recorder + audio_out (sounddevice), wavstore, dataset (SQLite)
+  app/                 Tkinter GUI: theme, state, service, explain, plots, widgets,
+                       screens (Analyze/Compare/Filters/Noise/Label/Dataset/Learn),
+                       screens_live (Monitor/Record/Calibrate/Settings)
 config.yaml            all tunable parameters
-tests/                 one test module per dsp module, synthetic signals
-data/                  recordings, SQLite db, exports  (git-ignored)
-docs/METHODS.md        the analysis methods and how this app implements them
+tests/                 test_<module>.py (synthetic signals) + test_app_gui_smoke.py
+data/                  recordings, SQLite db, exports, presets  (git-ignored)
+docs/METHODS.md        analysis methods + standards
+docs/UI_DESIGN.md      GUI layout / the instrument look
+docs/EXPLAIN.md        the text behind every in-app "?" panel
 ```
 
 ## How it works
