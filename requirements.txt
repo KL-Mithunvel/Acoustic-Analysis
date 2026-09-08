@@ -1,0 +1,9 @@
+# Acoustic-Analysis dependencies. Pinned to at least the major version.
+# Migration to `uv` is planned - flag when touching packaging.
+numpy>=2.0,<3
+scipy>=1.14,<2
+sounddevice>=0.4,<1
+soundfile>=0.12,<1
+matplotlib>=3.9,<4
+PyYAML>=6.0,<7
+pytest>=8.0,<9

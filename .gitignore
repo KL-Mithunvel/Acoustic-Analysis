@@ -1,0 +1,25 @@
+# Virtual environments
+venv/
+.venv/
+
+# Runtime data - recordings, database, exports are never committed
+data/
+*.wav
+*.wave
+*.flac
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

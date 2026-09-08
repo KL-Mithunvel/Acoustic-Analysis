@@ -1,0 +1,67 @@
+# Acoustic-Analysis configuration.
+# The single source of tunable parameters (Development Rule 2 - nothing audio- or
+# analysis-related is hardcoded in source). Values tagged "provisional" are
+# placeholders, not calibrated against real recordings.
+
+audio:
+  device: null            # input device index from `python -m acoustic_analysis.cli devices`; null = system default
+  sample_rate: 48000      # Hz
+  channels: 1
+  block_size: 1024        # frames per capture callback
+
+capture:
+  trigger: rms            # rms | manual
+  rms_threshold: 0.02     # provisional - linear RMS on float [-1, 1]; run a calibration pass on the real mic
+  pre_trigger_ms: 100     # audio retained from before the trigger fires
+  capture_duration_s: 0.6 # total clip length recorded per event
+  cooldown_s: 1.0         # ignore new triggers for this long after one fires
+
+calibration:
+  enabled: false
+  reference_db_spl: 94.0  # pistonphone tone level
+  reference_freq_hz: 1000
+  counts_per_pascal: null # set by a calibration pass; null -> levels are relative, not dB SPL
+
+analysis:
+  bandpass_hz: [300, 18000]     # provisional
+  bandpass_order: 4
+  impact_threshold_mult: 5.0    # impact = first sample above (mult * pre-impact RMS)
+  impact_skip_ms: 5             # discard this much immediately after the detected impact
+  ring_window_ms: [5, 250]      # relative to impact - FFT / spectral / octave features
+  decay_window_ms: [5, 500]     # relative to impact - envelope decay fit
+  min_snr_db: 10                # clip below this is flagged RETEST, not graded
+
+octave:
+  fraction: 3                   # 1 | 3 | 6 | 12  -> 1/N octave
+  f_min_hz: 25
+  f_max_hz: 20000
+  reference_pressure_pa: 2.0e-5 # 20 uPa, for dB SPL band levels
+
+weighting:
+  default: Z                    # A | C | Z ; Z = flat, recommended for NDT
+
+spectrum:
+  n_peaks: 3
+  rolloff_fraction: 0.85
+
+decay:
+  db_drop_points: [10, 20, 30]  # report time-to-(-N dB) for each
+
+grading:
+  # provisional - tune against real good/defective recordings
+  dominant_freq_tolerance: 0.15 # +/- fraction of the reference dominant frequency
+  t30_min_ratio: 0.60           # DEFECTIVE if T30 < ratio * reference T30
+  high_low_ratio_min: 0.50      # DEFECTIVE if high/low band ratio < this * reference
+  band_decay_max_ratio: 3.0     # DEFECTIVE if any band decays > Nx faster than reference
+  centroid_borderline_sigma: 1.0
+
+labels:
+  classes: [good, cracked, corner_broken, other_defect]
+  extra: [retest, discard]
+
+paths:
+  data_dir: data
+  recordings_dir: data/recordings
+  database: data/acoustic_analysis.sqlite
+  exports_dir: data/exports
+  reference_profile: data/reference_profile.json
