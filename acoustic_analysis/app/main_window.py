@@ -14,8 +14,31 @@ from ..config import load_config, resolve_path
 from ..io.dataset import Dataset
 from ..io.wavstore import load_clip
 from .explain import Explainer
-from .screens import ALL_SCREENS
+from .screens import (
+    AnalyzeScreen,
+    CompareScreen,
+    DatasetScreen,
+    FiltersScreen,
+    LabelScreen,
+    LearnScreen,
+    NoiseScreen,
+)
+from .screens_live import CalibrateScreen, MonitorScreen, RecordScreen, SettingsScreen
 from .service import AnalysisService
+
+_SCREENS = [
+    AnalyzeScreen,
+    CompareScreen,
+    FiltersScreen,
+    NoiseScreen,
+    MonitorScreen,
+    RecordScreen,
+    LabelScreen,
+    DatasetScreen,
+    CalibrateScreen,
+    LearnScreen,
+    SettingsScreen,
+]
 from .state import ClipData, SharedState
 from .widgets import show_explanation
 
@@ -73,7 +96,7 @@ class MainWindow(tk.Tk):
         self.nb = ttk.Notebook(self)
         self.nb.pack(fill="both", expand=True)
         self.screens = []
-        for cls in ALL_SCREENS:
+        for cls in _SCREENS:
             screen = cls(self.nb, self.ctx)
             self.nb.add(screen, text=screen.title)
             self.screens.append(screen)
