@@ -11,6 +11,7 @@ audio:
 
 capture:
   trigger: rms            # rms | manual
+  input_gain: 1.0         # linear gain applied to incoming samples before anything else
   rms_threshold: 0.02     # provisional - linear RMS on float [-1, 1]; run a calibration pass on the real mic
   pre_trigger_ms: 100     # audio retained from before the trigger fires
   capture_duration_s: 0.6 # total clip length recorded per event
