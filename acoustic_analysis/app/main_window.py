@@ -5,14 +5,18 @@ current screen.
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from ..config import load_config, resolve_path
+from ..io import audio_out
 from ..io.dataset import Dataset
 from ..io.wavstore import load_clip
+from .theme import apply_theme
+from .widgets import MplPanel
 from .explain import Explainer
 from .screens import (
     AnalyzeScreen,
@@ -64,7 +68,8 @@ class MainWindow(tk.Tk):
     def __init__(self, cfg: dict | None = None):
         super().__init__()
         self.title("Acoustic-Analysis")
-        self.geometry("1180x760")
+        self.geometry("1240x800")
+        apply_theme(self)
 
         cfg = cfg or load_config()
         state = SharedState(cfg)
@@ -88,12 +93,14 @@ class MainWindow(tk.Tk):
                 pass
 
         self._build_menu()
-        self._status = tk.StringVar(value="ready")
-        ttk.Label(self, textvariable=self._status, anchor="w", relief="sunken").pack(
-            side="bottom", fill="x"
-        )
+        self._build_status_bar()
 
-        self.nb = ttk.Notebook(self)
+        body = ttk.Frame(self)
+        body.pack(fill="both", expand=True)
+
+        content = ttk.Frame(body)
+        content.pack(side="left", fill="both", expand=True)
+        self.nb = ttk.Notebook(content)
         self.nb.pack(fill="both", expand=True)
         self.screens = []
         for cls in _SCREENS:
@@ -102,10 +109,114 @@ class MainWindow(tk.Tk):
             self.screens.append(screen)
         self.nb.bind("<<NotebookTabChanged>>", lambda _e: self._refresh_current())
 
+        self._build_button_rail(body)
+        self._build_soft_keys()
+
         state.add_listener(self._refresh_current)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self.after(_POLL_MS, self._poll)
+        self.after(1000, self._tick_clock)
         self._bind_shortcuts()
+        self._refresh_current()
+
+    # -- instrument frame ------------------------------------------
+    def _build_status_bar(self):
+        bar = ttk.Frame(self)
+        bar.pack(side="top", fill="x")
+        self._screen_title = tk.StringVar(value="")
+        self._src_var = tk.StringVar(value="src: -")
+        self._cal_var = tk.StringVar(value="uncal")
+        self._clock_var = tk.StringVar(value="")
+        self._rec_var = tk.StringVar(value="")
+        ttk.Label(bar, textvariable=self._screen_title, style="Status.TLabel").pack(side="left")
+        ttk.Label(bar, textvariable=self._rec_var, style="Status.TLabel", foreground="#e2564d").pack(side="right")
+        ttk.Label(bar, textvariable=self._clock_var, style="Status.TLabel").pack(side="right")
+        ttk.Label(bar, textvariable=self._cal_var, style="Status.TLabel").pack(side="right")
+        ttk.Label(bar, textvariable=self._src_var, style="Status.TLabel").pack(side="right")
+        self._status = tk.StringVar(value="ready")
+        ttk.Label(self, textvariable=self._status, style="Status.TLabel", anchor="w").pack(
+            side="bottom", fill="x"
+        )
+
+    def _build_button_rail(self, parent):
+        rail = ttk.Frame(parent)
+        rail.pack(side="right", fill="y")
+        buttons = [
+            ("Record", lambda: self._rail_record()),
+            ("Play", self._rail_play),
+            ("Stop", audio_out.stop),
+            ("Open", self.open_files),
+            ("Save", self._rail_save),
+            ("Snapshot", self._rail_snapshot),
+            ("Prev", lambda: self._step_clip(-1)),
+            ("Next", lambda: self._step_clip(1)),
+            ("Home", lambda: self.nb.select(0)),
+        ]
+        for label, cmd in buttons:
+            ttk.Button(rail, text=label, style="Rail.TButton", command=cmd).pack(fill="x", pady=1, padx=2)
+
+    def _build_soft_keys(self):
+        self._soft = ttk.Frame(self)
+        self._soft.pack(side="bottom", fill="x")
+        self._soft_btns = [ttk.Button(self._soft, text="", width=16) for _ in range(4)]
+        for b in self._soft_btns:
+            b.pack(side="left", padx=2, pady=2)
+
+    def _update_soft_keys(self, screen):
+        keys = getattr(screen, "soft_keys", lambda: [])()
+        for i, btn in enumerate(self._soft_btns):
+            if i < len(keys):
+                label, cmd = keys[i]
+                btn.configure(text=label, command=cmd, state="normal")
+            else:
+                btn.configure(text="", command=lambda: None, state="disabled")
+
+    def _tick_clock(self):
+        self._clock_var.set(time.strftime("%H:%M"))
+        clip = self.ctx.state.primary()
+        self._src_var.set(f"src: {clip.source}" if clip else "src: -")
+        self._cal_var.set("CAL" if self.ctx.state.cfg["calibration"].get("enabled") else "uncal")
+        self.after(1000, self._tick_clock)
+
+    def _step_clip(self, delta):
+        clips = self.ctx.state.clips()
+        if not clips:
+            return
+        cur = self.ctx.state.selection()
+        i = (cur[0] if cur else 0) + delta
+        self.ctx.state.select([i % len(clips)])
+
+    def _rail_play(self):
+        clip = self.ctx.state.primary()
+        if clip is not None and audio_out.is_available():
+            audio_out.play(clip.samples, clip.fs)
+
+    def _rail_record(self):
+        for i, s in enumerate(self.screens):
+            if s.title == "Record":
+                self.nb.select(i)
+
+    def _rail_save(self):
+        clip = self.ctx.state.primary()
+        if clip is None:
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".wav", initialfile=f"{clip.name}.wav")
+        if path:
+            from ..io.wavstore import save_clip
+
+            save_clip(clip.samples, clip.fs, path, metadata={"source": clip.source})
+            self._status.set(f"saved {path}")
+
+    def _rail_snapshot(self):
+        screen = self.screens[self.nb.index("current")]
+        panel = next((w for w in _iter_widgets(screen) if isinstance(w, MplPanel)), None)
+        if panel is None:
+            self._status.set("no chart on this screen to snapshot")
+            return
+        path = filedialog.asksaveasfilename(defaultextension=".png")
+        if path:
+            panel.figure.savefig(path, dpi=140)
+            self._status.set(f"saved {path}")
 
     # -- menu / shortcuts -------------------------------------------
     def _build_menu(self):
@@ -164,14 +275,24 @@ class MainWindow(tk.Tk):
         except tk.TclError:
             return
         if 0 <= current < len(self.screens):
-            self.screens[current].refresh()
+            screen = self.screens[current]
+            screen.refresh()
+            self._screen_title.set(screen.title)
+            self._update_soft_keys(screen)
 
     def _on_close(self):
         try:
+            audio_out.stop()
             self.ctx.service.stop()
             self.ctx.db.close()
         finally:
             self.destroy()
+
+
+def _iter_widgets(widget):
+    for child in widget.winfo_children():
+        yield child
+        yield from _iter_widgets(child)
 
 
 def run() -> int:

@@ -61,5 +61,12 @@ def test_gui_constructs_analyses_and_switches_tabs(tmp_path):
         for tab in range(len(win.screens)):
             win.nb.select(tab)
             win.update()
+            win._refresh_current()  # exercises title + soft-key wiring
+
+        # instrument frame is present and wired
+        assert win._screen_title.get()
+        win._tick_clock()
+        win._step_clip(1)
+        win._step_clip(-1)
     finally:
         win._on_close()

@@ -82,6 +82,12 @@ class AnalyzeScreen(_Base):
     def _analyze(self):
         self.ctx.service.submit_selection()
 
+    def soft_keys(self):
+        return [
+            ("Analyze", self._analyze),
+            ("Remove clip", lambda: [self.ctx.state.remove_clip(i) for i in reversed(self.ctx.state.selection())]),
+        ]
+
     def refresh(self):
         clips = self.ctx.state.clips()
         cur = set(self.clip_list.curselection())
@@ -256,12 +262,15 @@ class FiltersScreen(_Base):
         except Exception as exc:  # noqa: BLE001
             messagebox.showerror("Filters", str(exc))
 
+    def soft_keys(self):
+        return [("Update", self.refresh), ("Write to config", self._write_config)]
+
     def refresh(self):
         cfg = self.ctx.state.cfg
         fs = cfg["audio"]["sample_rate"]
         try:
             chain = self._chain()
-        except ValueError:
+        except Exception:  # noqa: BLE001 - bad entry text; keep the last good plot
             return
         self.p_resp.draw_with(plots.draw_filter_response, chain, fs)
         self.desc.configure(state="normal")
@@ -403,6 +412,9 @@ class LabelScreen(_Base):
         if clip and (clip.grade or {}).get("grade") in self.label["values"]:
             pass
 
+    def soft_keys(self):
+        return [("Save to dataset", self._save)]
+
     def _save(self):
         clip = self.ctx.state.primary()
         if clip is None or not self.label.get():
@@ -446,6 +458,13 @@ class DatasetScreen(_Base):
             self.tree.heading(c, text=c)
             self.tree.column(c, width=90, anchor="center")
         self.tree.pack(fill="both", expand=True, pady=6)
+
+    def soft_keys(self):
+        return [
+            ("Export CSV", lambda: self._export("csv")),
+            ("Export JSON", lambda: self._export("json")),
+            ("Build reference", self._build_ref),
+        ]
 
     def refresh(self):
         self.tree.delete(*self.tree.get_children())
