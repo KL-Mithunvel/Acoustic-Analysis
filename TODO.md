@@ -51,3 +51,7 @@ _(nothing - v0.1 build is complete; see Not Started for what remains)_
   Settings (fbac568); dark instrument-look restyle - status bar, button rail, soft-keys
   (e546ae9).
 - [x] Phase 7 - docs sync (this pass). 133 tests passing.
+- [x] GUI restyle follow-on (branch `gui-restyle`): `main.py` one-command launcher
+  (b71f6dc), theme-palette refresh (f8dd63f), tab bar -> left sidebar nav + instrument
+  frame (d8a7c5f), and Home screen (`app/screens_home.py`) wired in as screen 0 +
+  `AppContext.navigate`/`open_files` hooks. Docs synced. 2026-09-09.

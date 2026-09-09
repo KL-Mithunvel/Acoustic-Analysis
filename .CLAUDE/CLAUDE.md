@@ -27,13 +27,16 @@ dataset for training a classifier.
   soundfile. Plots: matplotlib. Storage: SQLite. Config: YAML. Tests: pytest.
 - **Status:** v0.1, end-to-end working. DSP core, feature extraction, noise/filter
   modules, I/O (WAV + SQLite + recorder + playback), rule-based classification, the
-  headless CLI, and the full Tkinter GUI (11 screens, dark instrument-look shell) are
-  all built and tested - 133 tests. Not yet done: real-mic verification, pistonphone
-  calibration against hardware, threshold tuning on real tiles, PyInstaller build,
-  `dsp/loudness.py`. See `TODO.md`.
+  headless CLI, and the full Tkinter GUI (12 screens, dark instrument-look shell with a
+  left sidebar nav, opening on a Home launcher/session-summary screen) are all built and
+  tested - 133 tests. Not yet done: real-mic verification, pistonphone calibration
+  against hardware, threshold tuning on real tiles, PyInstaller build, `dsp/loudness.py`.
+  See `TODO.md`.
 - **Entry points:**
-  - `python -m acoustic_analysis` — GUI (Analyze / Compare / Filters / Noise / Monitor /
-    Record / Label / Dataset / Calibrate / Learn / Settings)
+  - `python main.py` — one-command launcher: bootstraps `./venv` + deps on first run,
+    then the GUI (or forwards args to the CLI)
+  - `python -m acoustic_analysis` — GUI (Home / Monitor / Record / Analyze / Compare /
+    Filters / Noise / Label / Dataset / Calibrate / Learn / Settings)
   - `python -m acoustic_analysis.cli devices | analyze | noise | calibrate | export`
 
 ---
@@ -72,6 +75,7 @@ dependency is a microphone (`io/recorder.py`); the simulated equivalent, per
 Everything below is built and tested unless marked otherwise.
 
 ```
+main.py                 one-command launcher: bootstrap ./venv + deps, then GUI or CLI
 acoustic_analysis/
   __main__.py           launches the GUI (falls back to CLI help)
   config.py             load_config / resolve_path
@@ -97,13 +101,15 @@ acoustic_analysis/
     wavstore.py         save_clip / load_clip (float WAV + JSON sidecar)
     dataset.py          SQLite: sessions / clips / features / labels; export_csv / export_json
   app/                  Tkinter, laptop desktop, dark instrument-look shell
-    main_window.py      Tk root, status bar + notebook + button rail + soft-key bar, worker poll
+    main_window.py      Tk root, status bar + left sidebar nav + button rail + soft-key bar, worker poll
     theme.py            dark ttk style + matching matplotlib rcParams
     state.py            SharedState + ClipData - thread-safe clip list, selection, profile
     service.py          AnalysisService - feature extraction + grade on a worker thread
     explain.py          loads docs/EXPLAIN.md -> Explainer facade
     plots.py            draw_* functions onto a given Axes (Agg-testable)
     widgets.py          MplPanel (figure + "?" popup), FeatureTree, info_button
+    screens_home.py     Home - launcher + current-session summary (clip count, last grade,
+                        calibration state, reference-profile state, recent clips)
     screens.py          Analyze, Compare, Filters, Noise, Label, Dataset, Learn
     screens_live.py     Monitor, Record, Calibrate, Settings
 config.yaml             all tunable parameters
@@ -172,7 +178,7 @@ it follows; `docs/EXPLAIN.md` is the user-facing version of the same.
   hardware, lazy-import `sounddevice`, smoke-tested only.
 - **`app/`** — Tk on the main thread, `AnalysisService` worker off it. `plots.py` and
   `explain.py` are Tk-free and unit-tested; the screens are covered by
-  `test_app_gui_smoke.py` (constructs the window, analyses a clip, visits every tab).
+  `test_app_gui_smoke.py` (constructs the window, analyses a clip, visits every screen).
 
 ---
 

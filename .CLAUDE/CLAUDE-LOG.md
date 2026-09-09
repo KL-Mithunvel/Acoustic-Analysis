@@ -67,3 +67,27 @@ instrument-style GUI look (from a CoCo-80X screenshot, kept local as a product i
 real-tile data so grading and every `config.yaml` threshold are unvalidated; no
 PyInstaller build; `dsp/loudness.py` deferred. See `.CLAUDE/CLAUDE.md` Known Technical
 Debt.
+
+## 2026-09-09 — GUI restyle: sidebar nav + Home screen
+
+Follow-on to the Phase 6 restyle, on branch `gui-restyle` (commits `b71f6dc` one-command
+`main.py` launcher, `f8dd63f` theme-palette refresh + shell styles, `d8a7c5f` tab bar ->
+left sidebar nav + instrument frame), then this pass wiring the Home screen in:
+
+- `app/screens_home.py` (new, was uncommitted): `HomeScreen` - a launcher (Record / Open
+  WAVs / Analyze / Dataset quick actions) plus a session summary: clips-in-session with a
+  per-grade tally, last grade, calibration state, reference-profile state, and a
+  recent-clips table. `refresh()` handles the empty session.
+- `app/main_window.py`: `AppContext` gained `navigate` / `open_files` callable fields,
+  set to `MainWindow._goto` / `.open_files` right after the context is built (before the
+  screens are constructed, since `HomeScreen.__init__` wires buttons to them).
+  `HomeScreen` prepended to `_NAV_GROUPS` as a new `SESSION` group, so it is screen 0 and
+  the app opens on it; the rail's existing **Home** button (`_goto("Home")`) now resolves.
+- Docs synced: `README.md` (12-screen, sidebar nav, `python main.py`, layout tree),
+  `.CLAUDE/CLAUDE.md` (status, entry points, architecture tree, smoke-test wording).
+- Deliberately skipped: the bare-key shortcuts from `docs/UI_DESIGN.md` (`H` Home, `R`
+  Record). The current bindings are modifier/function keys only, on purpose - a bare
+  letter binding would fire while typing in an entry field. Revisit with per-widget
+  focus handling if wanted.
+- 133 tests still green; `test_app_gui_smoke.py` now also constructs and visits Home.
+  `py_compile` sweep clean.

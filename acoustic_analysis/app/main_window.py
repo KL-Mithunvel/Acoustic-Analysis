@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import time
 import tkinter as tk
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
@@ -26,6 +27,7 @@ from .screens import (
     LearnScreen,
     NoiseScreen,
 )
+from .screens_home import HomeScreen
 from .screens_live import CalibrateScreen, MonitorScreen, RecordScreen, SettingsScreen
 from .service import AnalysisService
 from .state import ClipData, SharedState
@@ -34,8 +36,9 @@ from .widgets import MplPanel, NavItem, RailButton, show_explanation
 
 _POLL_MS = 200
 
-# Sidebar groups, top to bottom. HomeScreen is prepended once it exists.
+# Sidebar groups, top to bottom.
 _NAV_GROUPS: list[tuple[str, list]] = [
+    ("SESSION", [HomeScreen]),
     ("LIVE", [MonitorScreen, RecordScreen, CalibrateScreen]),
     ("ANALYZE", [AnalyzeScreen, CompareScreen, FiltersScreen, NoiseScreen]),
     ("DATA", [LabelScreen, DatasetScreen]),
@@ -50,6 +53,8 @@ class AppContext:
     service: AnalysisService
     explainer: Explainer
     db: Dataset
+    navigate: Callable[[str], None] | None = None
+    open_files: Callable[[], None] | None = None
     _session_id: int | None = None
 
     def ensure_session(self) -> int:
@@ -78,6 +83,8 @@ class MainWindow(tk.Tk):
             explainer=Explainer(),
             db=Dataset(db_path),
         )
+        self.ctx.navigate = self._goto
+        self.ctx.open_files = self.open_files
 
         prof_path = resolve_path(cfg, "reference_profile")
         if prof_path.is_file():

@@ -11,7 +11,7 @@ first use case is clay/ceramic roofing tiles, but nothing in the analysis is
 tile-specific.
 
 > **Status: v0.1, working end to end.** DSP core, feature extraction, noise + filter
-> tools, WAV/SQLite storage, rule-based grading, a headless CLI and an 11-screen
+> tools, WAV/SQLite storage, rule-based grading, a headless CLI and a 12-screen
 > Tkinter GUI (styled like a handheld analyser) are all built and tested (133 tests).
 > Not yet done: real-microphone verification, pistonphone calibration, threshold
 > tuning on real tiles, a packaged executable. See [`TODO.md`](TODO.md).
@@ -61,8 +61,9 @@ so a model can learn the boundary.
 - **Headless CLI** — `devices`, `analyze`, `noise`, `calibrate`, `export`.
 
 The GUI is a plain windowed Tkinter app styled like a handheld acoustic analyser: a dark
-screen, a fixed top status bar, a persistent button rail, and a per-screen soft-key row
-(see [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md)).
+screen, a fixed top status bar, a left sidebar nav, a persistent button rail, and a
+per-screen soft-key row (see [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md)). It opens on a
+**Home** screen — a launcher plus a summary of the current session.
 
 ## Requirements
 
@@ -85,6 +86,10 @@ pip install -r requirements.txt
 ## Quick start
 
 ```powershell
+# One-command launch (builds venv + installs deps on first run, then the GUI):
+python main.py
+
+# ...or manage the venv yourself:
 venv\Scripts\activate
 
 # List input devices, pick the index of your mic, put it in config.yaml
@@ -119,8 +124,10 @@ acoustic_analysis/
   classify/            reference.py (profile) + rules.py (grade)
   io/                  recorder + audio_out (sounddevice), wavstore, dataset (SQLite)
   app/                 Tkinter GUI: theme, state, service, explain, plots, widgets,
-                       screens (Analyze/Compare/Filters/Noise/Label/Dataset/Learn),
-                       screens_live (Monitor/Record/Calibrate/Settings)
+                       screens_home (Home), screens (Analyze/Compare/Filters/Noise/
+                       Label/Dataset/Learn), screens_live (Monitor/Record/Calibrate/
+                       Settings)
+main.py                one-command launcher (bootstraps venv, then GUI or CLI)
 config.yaml            all tunable parameters
 tests/                 test_<module>.py (synthetic signals) + test_app_gui_smoke.py
 data/                  recordings, SQLite db, exports, presets  (git-ignored)
