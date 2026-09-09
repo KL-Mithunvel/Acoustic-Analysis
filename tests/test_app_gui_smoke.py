@@ -1,9 +1,11 @@
 """Smoke test: the whole GUI must construct, run its event loop, analyse a clip,
-and switch through every tab without raising. Skipped where there is no display.
+and switch through every sidebar screen without raising. Skipped where there is
+no display.
 """
 
 from __future__ import annotations
 
+import time
 import tkinter as tk
 
 import pytest
@@ -49,24 +51,28 @@ def test_gui_constructs_analyses_and_switches_tabs(tmp_path):
         idx = win.ctx.state.add_clip(ClipData(name="syn", samples=samples, fs=_FS))
         win.ctx.service.submit(idx)
 
-        for _ in range(60):
+        deadline = time.time() + 10
+        while time.time() < deadline:
             win.update()
             win.ctx.service.poll()
             if win.ctx.state.clip(idx).features is not None:
                 break
+            time.sleep(0.03)
 
         assert win.ctx.state.clip(idx).features is not None
         assert win.ctx.state.clip(idx).features["valid"] is True
 
-        for tab in range(len(win.screens)):
-            win.nb.select(tab)
+        assert len(win._nav_items) == len(win.screens)
+        for i in range(len(win.screens)):
+            win._show(i)  # calls _refresh_current: title + soft-key wiring
             win.update()
-            win._refresh_current()  # exercises title + soft-key wiring
 
         # instrument frame is present and wired
         assert win._screen_title.get()
         win._tick_clock()
         win._step_clip(1)
         win._step_clip(-1)
+        win._go_back()
+        win.update()
     finally:
         win._on_close()

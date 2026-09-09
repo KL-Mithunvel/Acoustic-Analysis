@@ -29,6 +29,11 @@ class _Base(ttk.Frame):
     def __init__(self, master, ctx):
         super().__init__(master, padding=8)
         self.ctx = ctx
+        # The screen is sized only by the content area it is packed into; its
+        # own children (pack or grid) lay out within that and can never push
+        # the window wider.
+        self.pack_propagate(False)
+        self.grid_propagate(False)
 
     def refresh(self) -> None:  # overridden
         pass
@@ -40,34 +45,42 @@ class AnalyzeScreen(_Base):
 
     def __init__(self, master, ctx):
         super().__init__(master, ctx)
+        # Three columns via grid so the charts absorb spare width and neither
+        # side column can ever overflow the screen (pack side="left" could).
+        self.columnconfigure(0, minsize=178, weight=0)
+        self.columnconfigure(1, weight=1)
+        self.columnconfigure(2, minsize=264, weight=0)
+        self.rowconfigure(0, weight=1)
+
         left = ttk.Frame(self)
-        left.pack(side="left", fill="y", padx=(0, 8))
+        left.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         ttk.Label(left, text="Clips").pack(anchor="w")
-        self.clip_list = tk.Listbox(left, height=14, exportselection=False, width=26)
-        self.clip_list.pack(fill="y", expand=True)
+        self.clip_list = tk.Listbox(left, height=14, exportselection=False, width=18)
+        self.clip_list.pack(fill="both", expand=True)
         self.clip_list.bind("<<ListboxSelect>>", self._on_pick)
-        ttk.Button(left, text="Analyze selected", command=self._analyze).pack(fill="x", pady=4)
+        ttk.Button(left, text="Analyze selected", style="Accent.TButton",
+                   command=self._analyze).pack(fill="x", pady=6)
         self.grade_var = tk.StringVar(value="-")
-        ttk.Label(left, textvariable=self.grade_var, font=("", 11, "bold")).pack(anchor="w", pady=(6, 0))
-        self.reasons = tk.Text(left, height=6, width=28, wrap="word", relief="flat")
+        ttk.Label(left, textvariable=self.grade_var, font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(6, 0))
+        self.reasons = tk.Text(left, height=6, width=24, wrap="word", relief="flat")
         self.reasons.pack(fill="x", pady=4)
 
         grid = ttk.Frame(self)
-        grid.pack(side="left", fill="both", expand=True)
+        grid.grid(row=0, column=1, sticky="nsew")
         ex = ctx.explainer
-        self.p_wave = MplPanel(grid, ex, "waveform", figsize=(4.4, 2.2))
-        self.p_spec = MplPanel(grid, ex, "spectrum", figsize=(4.4, 2.2))
-        self.p_oct = MplPanel(grid, ex, "octave", figsize=(4.4, 2.4))
-        self.p_edc = MplPanel(grid, ex, "edc", figsize=(4.4, 2.4))
+        self.p_wave = MplPanel(grid, ex, "waveform", figsize=(2.4, 1.4))
+        self.p_spec = MplPanel(grid, ex, "spectrum", figsize=(2.4, 1.4))
+        self.p_oct = MplPanel(grid, ex, "octave", figsize=(2.4, 1.5))
+        self.p_edc = MplPanel(grid, ex, "edc", figsize=(2.4, 1.5))
         self.p_wave.grid(row=0, column=0, sticky="nsew", padx=2, pady=2)
         self.p_spec.grid(row=0, column=1, sticky="nsew", padx=2, pady=2)
         self.p_oct.grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
         self.p_edc.grid(row=1, column=1, sticky="nsew", padx=2, pady=2)
         grid.rowconfigure((0, 1), weight=1)
-        grid.columnconfigure((0, 1), weight=1)
+        grid.columnconfigure((0, 1), weight=1, uniform="ch")
 
         right = ttk.Frame(self)
-        right.pack(side="left", fill="y", padx=(8, 0))
+        right.grid(row=0, column=2, sticky="nsew", padx=(8, 0))
         row = ttk.Frame(right)
         row.pack(fill="x")
         ttk.Label(row, text="Features").pack(side="left")

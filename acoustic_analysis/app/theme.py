@@ -45,6 +45,15 @@ def mono_font(size: int = 10, weight: str = "normal") -> tuple:
 
 
 def apply_theme(root: tk.Misc) -> None:
+    # Treat points as pixels so widget sizes computed in px line up regardless of
+    # the OS display-scaling factor (Tk's default scaling is DPI-derived and
+    # makes font-driven widths unpredictable). The dev target runs at its native
+    # working resolution, so 1.0 renders crisply.
+    try:
+        root.tk.call("tk", "scaling", 1.0)
+    except tk.TclError:  # pragma: no cover
+        pass
+
     style = ttk.Style(root)
     style.theme_use("clam")
 
