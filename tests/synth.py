@@ -76,3 +76,35 @@ def make_impact_clip(
 
     clip[n_pre:] += ring
     return clip.astype(np.float64), n_pre
+
+
+def make_tap_sequence(
+    sample_rate,
+    tap_times_s,
+    duration_s,
+    ring_freq_hz=2500.0,
+    tau_s=0.08,
+    amplitude=0.6,
+    noise_rms=2e-3,
+    seed=0,
+):
+    """A long take with strikes at known times - a stand-in for tap-test video.
+
+    Quiet room noise throughout, plus one decaying ring starting at each time in
+    ``tap_times_s``. ``detect_onsets`` run over this must return those times
+    back, which is the property the slicing tests assert.
+    """
+    rng = np.random.default_rng(seed)
+    n = int(round(duration_s * sample_rate))
+    x = rng.normal(0.0, noise_rms, n)
+
+    for t0 in tap_times_s:
+        start = int(round(t0 * sample_rate))
+        if not 0 <= start < n:
+            continue
+        length = min(n - start, int(round(6 * tau_s * sample_rate)))
+        t = np.arange(length) / sample_rate
+        x[start:start + length] += (
+            amplitude * np.exp(-t / tau_s) * np.sin(2 * np.pi * ring_freq_hz * t)
+        )
+    return x.astype(np.float64)
