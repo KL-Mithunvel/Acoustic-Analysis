@@ -29,6 +29,7 @@ from .screens import (
 )
 from .screens_home import HomeScreen
 from .screens_live import CalibrateScreen, MonitorScreen, RecordScreen, SettingsScreen
+from .screens_video import SliceScreen
 from .service import AnalysisService
 from .state import ClipData, SharedState
 from .theme import ACCENT, FG_MUTE, LINE, OK, SIDEBAR, apply_theme, ui_font
@@ -41,7 +42,7 @@ _NAV_GROUPS: list[tuple[str, list]] = [
     ("SESSION", [HomeScreen]),
     ("LIVE", [MonitorScreen, RecordScreen, CalibrateScreen]),
     ("ANALYZE", [AnalyzeScreen, CompareScreen, FiltersScreen, NoiseScreen]),
-    ("DATA", [LabelScreen, DatasetScreen]),
+    ("DATA", [SliceScreen, LabelScreen, DatasetScreen]),
     ("HELP", [LearnScreen, SettingsScreen]),
 ]
 
@@ -301,6 +302,7 @@ class MainWindow(tk.Tk):
         menubar = tk.Menu(self)
         file_menu = tk.Menu(menubar, tearoff=0)
         file_menu.add_command(label="Open WAV...", accelerator="Ctrl+O", command=self.open_files)
+        file_menu.add_command(label="Open video to slice...", command=self._open_video)
         file_menu.add_separator()
         file_menu.add_command(label="Quit", command=self._on_close)
         menubar.add_cascade(label="File", menu=file_menu)
@@ -334,6 +336,16 @@ class MainWindow(tk.Tk):
             self.ctx.service.submit(idx)
         if paths:
             self._status.set(f"loaded {len(paths)} file(s)")
+
+    def _open_video(self):
+        """Jump to the Slice screen and open its file dialog - the one
+        place a video can be loaded, so File > Open should land there
+        rather than duplicating the import."""
+        self._goto("Slice")
+        for s in self.screens:
+            if s.title == "Slice":
+                s.open_media()
+                return
 
     def _glossary(self):
         show_explanation(self, self.ctx.explainer, self.ctx.explainer.keys()[0])

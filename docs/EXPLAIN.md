@@ -79,3 +79,44 @@ Frequency (vertical) against time (horizontal), with colour as level. A live
 scrolling view of what the microphone hears - steady horizontal lines are
 constant tones (mains hum, motor whine); broadband vertical smears are taps,
 knocks and clicks.
+
+## slice_screen: Slicing a video into snippets
+Tap-test footage is usually one long take holding dozens of strikes on several
+tiles. Everything else in this app works on a clip containing **one** strike, so
+the take has to be cut up first. That is this screen.
+
+The quick way round it: **Open video**, then **Find strikes** - the app marks
+every tap it can hear and pre-cuts a snippet around each one. Work down the
+table, listen to each (double-click, or Play snippet), set its **grade** and
+**defect**, and hit **Save to dataset**. New snippets keep the last labels you
+used, so a run of taps on the same tile is one key each.
+
+Anything the detector gets wrong you fix by hand: drag across the detail plot to
+draw your own snippet, **Snap to strike** to pull a rough drag onto the exact
+tap, or **Delete snippet**. Raise **sensitivity** if quiet taps are being missed,
+lower it if handling noise is being picked up as strikes.
+
+Your cuts are saved beside the video as a `.snippets.json` file the moment you
+make them, so you can close the app mid-video and pick it up later. Nothing
+reaches the dataset until you press Save, and only snippets with **both** labels
+are saved.
+
+## take_overview: Whole take
+The entire recording at a glance - loud moments are tall, quiet ones flat, so
+the strikes are the obvious spikes. Click anywhere to jump there. The box shows
+which part is in the detail plot below; the coloured bands are snippets you have
+cut, shaded **amber** while they still need labels, **blue** once labelled, and
+**green** once saved to the dataset. Scanning for amber is the fastest way to
+see what is left to do.
+
+## take_detail: Detail view
+The zoomed view you cut in. **Drag across it** to select a region, then add it as
+a snippet. Red dashed lines are strikes the detector found; the pale line is the
+playhead. Use the zoom box to trade width for precision - 2 s is comfortable for
+finding taps, 0.25 s for trimming one exactly.
+
+A good snippet starts a few tens of milliseconds **before** the strike (the
+analysis measures the clip's own background noise from that lead-in, and refuses
+a clip with none) and runs long enough to capture the ring dying away - the
+defaults are 30 ms before and 700 ms after. One strike per snippet: two taps in
+one clip make the decay measurement meaningless.

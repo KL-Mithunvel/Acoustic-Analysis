@@ -169,6 +169,13 @@ class MplPanel(ttk.Frame):
         self._canvas = FigureCanvasTkAgg(self.figure, master=self)
         self._canvas.get_tk_widget().pack(fill="both", expand=True)
 
+    @property
+    def canvas(self):
+        """The Tk canvas, for callers that need to connect mouse events or
+        repaint without rebuilding the figure - a playhead moving ten times a
+        second cannot afford a full redraw of the waveform under it."""
+        return self._canvas
+
     def draw_with(self, fn, *args, **kwargs) -> None:
         """Clear the figure, call ``fn(ax, *args, **kwargs)``, redraw."""
         self.figure.clear()

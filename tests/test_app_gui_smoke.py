@@ -6,26 +6,17 @@ no display.
 from __future__ import annotations
 
 import time
-import tkinter as tk
 
 import pytest
 
 from acoustic_analysis.config import load_config
+from tests.conftest import has_display
 from tests.synth import make_impact_clip
 
 _FS = 48000
 
 
-def _has_display() -> bool:
-    try:
-        r = tk.Tk()
-        r.destroy()
-        return True
-    except tk.TclError:
-        return False
-
-
-pytestmark = pytest.mark.skipif(not _has_display(), reason="no display for Tk")
+pytestmark = pytest.mark.skipif(not has_display(), reason="no display for Tk")
 
 
 def _isolated_cfg(tmp_path):

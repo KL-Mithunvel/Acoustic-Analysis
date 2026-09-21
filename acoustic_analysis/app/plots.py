@@ -11,6 +11,7 @@ import numpy as np
 
 from ..dsp import decay as _dec
 from ..dsp import octave_bands as _ob
+from ..dsp import segmentation as _seg
 from ..dsp import spectrum as _spec
 from ..features import conditioned_windows
 
@@ -120,3 +121,108 @@ def draw_signal_pair(ax, fs, before, after, labels=("original", "filtered")) -> 
     ax.set_xlabel("time (s)")
     ax.set_ylabel("amplitude")
     ax.legend(fontsize=7)
+
+
+# -- slicing a long take ---------------------------------------------------
+# Colours for the Slice screen. Segments are drawn by state, because the one
+# question an operator asks of the overview is "what have I not done yet".
+_SEG_UNLABELLED = "#e6b053"   # cut, but no class yet
+_SEG_LABELLED = "#4aa8ff"     # ready to save
+_SEG_SAVED = "#4fc98a"        # already in the dataset
+_ONSET = "#e85d52"
+_PLAYHEAD = "#ededf1"
+
+
+def _segment_color(seg) -> str:
+    if getattr(seg, "saved", False):
+        return _SEG_SAVED
+    return _SEG_LABELLED if seg.labelled else _SEG_UNLABELLED
+
+
+def _draw_segments(ax, segments, *, label_them: bool) -> None:
+    for seg in segments:
+        color = _segment_color(seg)
+        ax.axvspan(seg.start_s, seg.end_s, color=color, alpha=0.22, lw=0)
+        ax.axvline(seg.start_s, color=color, lw=0.8, alpha=0.8)
+        if label_them:
+            ax.annotate(
+                str(seg.sid), xy=(seg.start_s, 0.96), xycoords=("data", "axes fraction"),
+                color=color, fontsize=7, ha="left", va="top",
+            )
+
+
+def draw_take_overview(
+    ax, mins, maxs, duration_s, *, segments=(), playhead_s=None, view=None
+) -> None:
+    """The whole recording at a glance: min/max envelope, every cut, the
+    playhead, and a box round the part shown in the detail plot.
+
+    Takes the decimated envelope rather than the signal itself - see
+    ``dsp.segmentation.envelope_minmax`` for why plotting the raw samples is
+    not an option at this length.
+    """
+    mins = np.asarray(mins, dtype=float)
+    maxs = np.asarray(maxs, dtype=float)
+    t = np.linspace(0.0, duration_s, mins.size, endpoint=False)
+    ax.fill_between(t, mins, maxs, color=_COLORS[0], lw=0)
+
+    _draw_segments(ax, segments, label_them=False)
+
+    if view is not None:
+        v0, v1 = view
+        ax.axvspan(v0, v1, facecolor="none", edgecolor=_PLAYHEAD, lw=0.9, alpha=0.5)
+    if playhead_s is not None:
+        ax.axvline(playhead_s, color=_PLAYHEAD, lw=1.0)
+
+    ax.set_xlim(0.0, max(duration_s, 1e-3))
+    ax.set_xlabel("time (s)")
+    ax.set_yticks([])
+    ax.set_title("Whole take")
+
+
+def draw_take_detail(
+    ax, samples, fs, start_s, *, segments=(), onsets=(), playhead_s=None,
+    selection=None, max_points=4000,
+) -> None:
+    """The zoomed view the operator actually cuts in.
+
+    Detected strikes appear as dashed marks, existing snippets as bands, and
+    the live selection as a brighter band on top.
+
+    A wide view is drawn as a min/max envelope rather than as samples: at
+    48 kHz even a 5-second window is 240 k points, and redrawing that while
+    audio plays makes the screen stutter. Below ``max_points`` the real samples
+    are drawn, which is what matters when trimming a cut to the millisecond.
+    """
+    x = np.asarray(samples, dtype=float)
+    if x.size == 0:
+        ax.text(0.5, 0.5, "no audio in view", ha="center", va="center", fontsize=8)
+        return
+    span_s = x.size / fs
+    if x.size > max_points:
+        lo, hi = _seg.envelope_minmax(x, max_points)
+        t = start_s + np.linspace(0.0, span_s, lo.size, endpoint=False)
+        ax.fill_between(t, lo, hi, color=_COLORS[0], lw=0)
+    else:
+        t = start_s + np.arange(x.size) / fs
+        ax.plot(t, x, lw=0.5, color=_COLORS[0])
+
+    _draw_segments(ax, segments, label_them=True)
+
+    for onset in onsets:
+        ax.axvline(onset, color=_ONSET, lw=0.9, ls=(0, (3, 2)), alpha=0.85)
+
+    if selection is not None:
+        s0, s1 = selection
+        if s1 > s0:
+            ax.axvspan(s0, s1, color=_PLAYHEAD, alpha=0.16, lw=0)
+    if playhead_s is not None:
+        ax.axvline(playhead_s, color=_PLAYHEAD, lw=1.0)
+
+    # From the requested window, not the drawn points: decimation leaves the
+    # last bucket short, and letting that set the limit would make the view
+    # creep as the operator scrolls.
+    ax.set_xlim(start_s, start_s + span_s)
+    ax.set_xlabel("time (s)")
+    ax.set_ylabel("amplitude")
+    ax.set_title("Detail - drag to select a snippet")
