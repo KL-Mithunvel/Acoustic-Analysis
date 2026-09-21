@@ -5,5 +5,9 @@ scipy>=1.14,<2
 sounddevice>=0.4,<1
 soundfile>=0.12,<1
 matplotlib>=3.9,<4
+# Ships its own ffmpeg binary, used by io/videoaudio.py to pull the audio
+# track and preview frames out of tap-test videos. A system ffmpeg on PATH
+# is preferred when present; this is the no-install fallback.
+imageio-ffmpeg>=0.5,<1
 PyYAML>=6.0,<7
 pytest>=8.0,<9

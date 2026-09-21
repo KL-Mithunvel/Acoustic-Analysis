@@ -41,12 +41,23 @@ CREATE TABLE IF NOT EXISTS features (
 CREATE TABLE IF NOT EXISTS labels (
     clip_id      INTEGER PRIMARY KEY REFERENCES clips(id) ON DELETE CASCADE,
     label        TEXT NOT NULL,
+    grade_tier   TEXT,
     grader       TEXT,
     confidence   REAL,
     in_reference INTEGER NOT NULL DEFAULT 0,
     labelled_at  TEXT NOT NULL
 );
 """
+
+# Columns added after the first release, as (table, column, definition). Applied
+# by _migrate() on open: CREATE TABLE IF NOT EXISTS leaves an existing table
+# alone, so a database written by an older build would otherwise never gain
+# them and every insert naming one would fail.
+_MIGRATIONS = [
+    # grade_tier: the tile's cosmetic grade (3A/3B/4/5), kept separate from
+    # `label` (the defect class) by the owner's decision - see segments.py.
+    ("labels", "grade_tier", "TEXT"),
+]
 
 # Curated scalar features for CSV export (nested keys use dotted paths).
 _CSV_FEATURE_KEYS = [
@@ -80,7 +91,17 @@ class Dataset:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         self._db.executescript(_SCHEMA)
+        self._migrate()
         self._db.commit()
+
+    def _migrate(self) -> None:
+        """Add any columns introduced after this database file was created."""
+        for table, column, decl in _MIGRATIONS:
+            existing = {
+                r["name"] for r in self._db.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if column not in existing:
+                self._db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
 
     # -- lifecycle -----------------------------------------------------------
     def close(self) -> None:
@@ -144,14 +165,18 @@ class Dataset:
         grader: str = "",
         confidence: float | None = None,
         in_reference: bool = False,
+        grade_tier: str = "",
     ) -> None:
+        """Label a clip. ``label`` is the defect class, ``grade_tier`` the
+        cosmetic grade - two independent axes, see segments.py."""
         self._db.execute(
-            "INSERT INTO labels (clip_id, label, grader, confidence, in_reference, labelled_at)"
-            " VALUES (?,?,?,?,?,?)"
-            " ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label, grader=excluded.grader,"
+            "INSERT INTO labels (clip_id, label, grade_tier, grader, confidence,"
+            " in_reference, labelled_at) VALUES (?,?,?,?,?,?,?)"
+            " ON CONFLICT(clip_id) DO UPDATE SET label=excluded.label,"
+            " grade_tier=excluded.grade_tier, grader=excluded.grader,"
             " confidence=excluded.confidence, in_reference=excluded.in_reference,"
             " labelled_at=excluded.labelled_at",
-            (clip_id, label, grader, confidence, int(bool(in_reference)), _now()),
+            (clip_id, label, grade_tier, grader, confidence, int(bool(in_reference)), _now()),
         )
         self._db.commit()
 
@@ -193,7 +218,8 @@ class Dataset:
         ).fetchone()
         out["features"] = json.loads(frow["json"]) if frow else None
         lrow = self._db.execute(
-            "SELECT label, grader, confidence, in_reference, labelled_at FROM labels WHERE clip_id = ?",
+            "SELECT label, grade_tier, grader, confidence, in_reference, labelled_at"
+            " FROM labels WHERE clip_id = ?",
             (out["id"],),
         ).fetchone()
         if lrow:
@@ -210,7 +236,7 @@ class Dataset:
         path.parent.mkdir(parents=True, exist_ok=True)
         header = [
             "clip_id", "session_id", "seq", "source", "sample_rate", "duration_s",
-            "label", "grader", "in_reference", "status", *(_CSV_FEATURE_KEYS),
+            "label", "grade_tier", "grader", "in_reference", "status", *(_CSV_FEATURE_KEYS),
         ]
         with path.open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
@@ -222,7 +248,8 @@ class Dataset:
                     [
                         clip["id"], clip["session_id"], clip["seq"], clip["source"],
                         clip["sample_rate"], clip["duration_s"],
-                        lab.get("label", ""), lab.get("grader", ""),
+                        lab.get("label", ""), lab.get("grade_tier") or "",
+                        lab.get("grader", ""),
                         int(bool(lab.get("in_reference"))), feats.get("status", ""),
                         *[_dig(feats, k) for k in _CSV_FEATURE_KEYS],
                     ]
@@ -239,6 +266,10 @@ class Dataset:
                 "seq": c["seq"],
                 "source": c["source"],
                 "sample_rate": c["sample_rate"],
+                # Provenance: for a snippet cut out of a video this records the
+                # file and the time range it came from, so a suspect row can be
+                # traced back to the footage and re-listened to.
+                "notes": c.get("notes") or "",
                 "label": c.get("label", {}),
                 "features": c.get("features"),
             }

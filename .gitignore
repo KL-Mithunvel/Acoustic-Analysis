@@ -18,6 +18,16 @@ __pycache__/
 build/
 dist/
 
+# Video - tap-test footage is never committed, same rule as audio. Nor are the
+# per-video snippet sidecars the Slice screen writes beside the source file.
+*.mp4
+*.mov
+*.m4v
+*.mkv
+*.avi
+*.webm
+*.snippets.json
+
 # Images - third-party reference screenshots kept local only.
 # App screenshots for the README get force-added when needed.
 *.png
