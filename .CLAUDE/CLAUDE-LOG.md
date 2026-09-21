@@ -91,3 +91,78 @@ left sidebar nav + instrument frame), then this pass wiring the Home screen in:
   focus handling if wanted.
 - 133 tests still green; `test_app_gui_smoke.py` now also constructs and visits Home.
   `py_compile` sweep clean.
+
+## 2026-09-20 - v0.2: the Slice screen (tap-test video -> labelled snippets)
+
+**The problem.** The project's acoustic data exists as phone video: one continuous take
+holding dozens of strikes on tiles of several grades. Nothing in the app could use that
+- every path here starts from a clip containing exactly one strike. The dataset was
+empty (0 clips, 0 labels) and the blocker was not analysis, it was getting from footage
+to clips.
+
+**What was built**, following the existing pure/IO/GUI split:
+
+- `dsp/segmentation.py` (pure) - `detect_onsets` finds every strike in a whole take:
+  RMS envelope, threshold at a multiple of the take's own noise floor, rising edges
+  only, a refractory gap, then a loudness filter against the loudest strike. Also
+  `envelope_minmax`, min/max decimation so a 10-minute waveform can actually be drawn,
+  and `segments_from_onsets` for the windows.
+- `segments.py` (pure) - `Segment` / `SnippetSet` plus the list rules: time-ordered
+  numbering, overlap refusal, snapping a hand-drawn selection onto a detected strike,
+  per-axis label application, summary counts. No numpy, no I/O.
+- `io/videoaudio.py` - ffmpeg as a subprocess: audio extraction (cached under
+  `data/cache/`, keyed by path+mtime+rate) and single-frame PNG grabs. System ffmpeg
+  first, else the `imageio-ffmpeg` bundled binary (new dependency, chosen so a fresh
+  machine needs no separate install).
+- `io/snippets.py` - the `<video>.snippets.json` sidecar, written beside the footage so
+  in-progress cuts survive closing the app and travel with the video.
+- `io/audio_out.Player` - an `OutputStream` that reports its position. `sd.play` cannot,
+  and a playhead needs one.
+- `app/screens_video.py` - the screen: overview + detail waveforms, drag-to-select,
+  transport with a scrub bar, a debounced video frame at the playhead, the snippet
+  table, and Save to dataset.
+
+**Two label axes, by the owner's decision.** `label` stays the defect class; a new
+nullable `grade_tier` column holds the cosmetic tier (3A/3B/4/5). Merging them would
+have made the exported dataset unable to answer either question - a grade-4 tile can be
+intact and a 3A tile can be cracked. `Dataset` gained a `_migrate()` that adds columns
+to database files written by older builds, since `CREATE TABLE IF NOT EXISTS` would
+otherwise leave them without it and every insert would fail.
+
+**Three real bugs, all caught by tests rather than by reading:**
+
+- `segments_from_onsets` trimmed a window to `next_onset - guard_ms`, but the *next*
+  window starts `pre_ms` early to collect its own lead-in. With the defaults (pre 30 ms,
+  guard 20 ms) consecutive snippets overlapped by 10 ms, so the same audio would have
+  been exported twice under two labels. Now trimmed by `max(pre_ms, guard_ms)`.
+- The save path wrote to SQLite from its worker thread - `sqlite3` objects belong to the
+  thread that made them, and every save failed with that error. Restructured: the worker
+  does the slow, thread-safe half (WAV + feature extraction) and hands rows back for the
+  Tk thread to insert, which is also how every other screen writes.
+- The GUI test module skipped intermittently in full-suite runs (7 tests silently not
+  running while the suite reported green). Cause: two `tk.Tk()` create/destroy probes at
+  collection time, one per GUI module, which occasionally fails on Windows. Moved to a
+  session-cached `has_display()` in `conftest.py` with a retry; four consecutive full
+  runs now give 197/197 with no skips.
+
+**Verified:** 197 tests (was 133), four consecutive clean runs, `py_compile` sweep clean.
+`test_video_slicing.py` and `test_app_slice_gui.py` build a real `.mp4` with ffmpeg and
+run the whole chain - open, detect the four taps at their known times, label two grades,
+save, and check the database rows, the CSV header, the WAVs on disk and the sidecar
+resume. Also confirmed the cache is reused rather than re-decoded, and that a video with
+no audio stream fails with a sentence rather than a stack trace.
+
+**Not verified - no real footage exists yet.** Every video tested was generated: clean
+synthetic taps, no room, no handling noise, no speech, no phone AGC. `config.yaml`
+`video.onsets` is provisional and the sensitivity slider is on the toolbar because the
+default will be wrong on the first real recording. `audio_out.Player` has never made a
+sound, and the screen has been driven programmatically but never watched - drag feel,
+playhead smoothness and frame-preview latency are all unassessed.
+
+**Docs synced:** `README.md` (v0.2, 13 screens, 197 tests, Slice feature + ffmpeg
+requirement, layout tree), `.CLAUDE/CLAUDE.md` (status, entry points, architecture tree,
+key modules, data files, five new debt entries), `docs/METHODS.md` (new §1a on slicing a
+long take and why the noise floor is a percentile; §6.1 rewritten for two label axes),
+`docs/UI_DESIGN.md` (screen table + Slice layout sketch), `docs/EXPLAIN.md` (three new
+"?" panels), `TODO.md`, `config.yaml` (new `video:` block, `labels.grades`), `VERSION`
+0.1 -> 0.2, `.gitignore` (footage + sidecars are never committed).

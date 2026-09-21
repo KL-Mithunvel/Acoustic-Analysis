@@ -10,11 +10,12 @@ impact and reading its ringing response to tell a sound part from a cracked one.
 first use case is clay/ceramic roofing tiles, but nothing in the analysis is
 tile-specific.
 
-> **Status: v0.1, working end to end.** DSP core, feature extraction, noise + filter
-> tools, WAV/SQLite storage, rule-based grading, a headless CLI and a 12-screen
-> Tkinter GUI (styled like a handheld analyser) are all built and tested (133 tests).
-> Not yet done: real-microphone verification, pistonphone calibration, threshold
-> tuning on real tiles, a packaged executable. See [`TODO.md`](TODO.md).
+> **Status: v0.2, working end to end.** DSP core, feature extraction, noise + filter
+> tools, video slicing, WAV/SQLite storage, rule-based grading, a headless CLI and a
+> 13-screen Tkinter GUI (styled like a handheld analyser) are all built and tested
+> (197 tests). Not yet done: real-microphone verification, pistonphone calibration,
+> threshold tuning on real tiles and real footage, a packaged executable. See
+> [`TODO.md`](TODO.md).
 
 > Part of the **Tile Sorting** automated inspection project (VIT Chennai,
 > BMEE497J/BMHA497J). This repo is deliberately standalone and reusable — the tile line
@@ -35,6 +36,12 @@ so a model can learn the boundary.
 
 - **Capture** — record clips from any input device (`sounddevice`) with a pre-trigger
   ring buffer and manual/amplitude trigger, or import WAV files (many at once).
+- **Slice a video** — open tap-test footage, see its audio as a waveform, and cut it
+  into one labelled snippet per strike. **Find strikes** detects every tap and pre-cuts
+  a snippet around each; you confirm, drag to adjust, and label. The video frame at the
+  playhead shows which tile is being struck. Cuts are saved beside the video as you go,
+  so a long take can be done over several sittings. Requires `ffmpeg` — supplied by the
+  `imageio-ffmpeg` dependency, no separate install.
 - **Analysis suite** (see [`docs/METHODS.md`](docs/METHODS.md)):
   - fractional-octave-band levels (1/1 … 1/12 octave, IEC 61260 band edges)
   - FFT spectrum + descriptors: dominant frequency, peaks with Q, spectral
@@ -51,9 +58,9 @@ so a model can learn the boundary.
   clip. What you see is what feeds analysis.
 - **Noise** — capture a noise profile, run environmental analysis (Leq, L10/50/90, NC
   rating, dominant tones), and preview spectral-subtraction denoising.
-- **Label & dataset** — assign a quality class + grader + notes; build a reference
-  profile from flagged clips; everything in a local SQLite database; export to CSV / JSON
-  for model training.
+- **Label & dataset** — assign a defect class *and* a cosmetic grade tier (two
+  independent axes) + grader + notes; build a reference profile from flagged clips;
+  everything in a local SQLite database; export to CSV / JSON for model training.
 - **Grade** — rule-based GOOD / BORDERLINE / DEFECTIVE / RETEST against the reference,
   with the reasons that decided it.
 - **Learn** — a synthetic-signal bench and a glossary, because every chart in the app
@@ -72,6 +79,9 @@ per-screen soft-key row (see [`docs/UI_DESIGN.md`](docs/UI_DESIGN.md)). It opens
 - Python 3.13+
 - A microphone. For real measurement work a measurement mic is strongly preferred over a
   laptop's built-in array — see [`docs/METHODS.md`](docs/METHODS.md).
+- `ffmpeg`, for the Slice screen only. Installed automatically with the requirements
+  (`imageio-ffmpeg` bundles a binary); a system `ffmpeg` on `PATH` is used in preference
+  when one exists. Everything else in the app works without it.
 
 ## Install
 
@@ -98,6 +108,8 @@ python -m acoustic_analysis.cli devices
 # Launch the GUI
 python -m acoustic_analysis
 
+# Slicing a tap-test video: GUI -> DATA -> Slice -> Open video -> Find strikes
+
 # Or headlessly
 python -m acoustic_analysis.cli analyze recordings\tile_0001.wav
 python -m acoustic_analysis.cli analyze recordings\ --export features.csv --profile ref.json
@@ -120,17 +132,21 @@ acoustic_analysis/
   dsp/                 PURE signal processing — numpy in, numbers out, no I/O
     conditioning · spectrum · octave_bands · decay · weighting · sound_level
     filters (chain + Bode) · noise (profile + denoise) · environment (NC / Ln / tones)
+    segmentation (find every strike in a long take, cut it into snippets)
   features.py          conditioned_windows + extract_features -> one dict per clip
+  segments.py          PURE snippet model: one labelled time range + list rules
   classify/            reference.py (profile) + rules.py (grade)
-  io/                  recorder + audio_out (sounddevice), wavstore, dataset (SQLite)
+  io/                  recorder + audio_out (sounddevice), wavstore, dataset (SQLite),
+                       videoaudio (ffmpeg: audio track + frame grabs), snippets (sidecar)
   app/                 Tkinter GUI: theme, state, service, explain, plots, widgets,
                        screens_home (Home), screens (Analyze/Compare/Filters/Noise/
                        Label/Dataset/Learn), screens_live (Monitor/Record/Calibrate/
-                       Settings)
+                       Settings), screens_video (Slice)
 main.py                one-command launcher (bootstraps venv, then GUI or CLI)
 config.yaml            all tunable parameters
-tests/                 test_<module>.py (synthetic signals) + test_app_gui_smoke.py
-data/                  recordings, SQLite db, exports, presets  (git-ignored)
+tests/                 test_<module>.py (synthetic signals), test_app_gui_smoke.py,
+                       test_app_slice_gui.py + test_video_slicing.py (real ffmpeg)
+data/                  recordings, SQLite db, exports, presets, cache  (git-ignored)
 docs/METHODS.md        analysis methods + standards
 docs/UI_DESIGN.md      GUI layout / the instrument look
 docs/EXPLAIN.md        the text behind every in-app "?" panel

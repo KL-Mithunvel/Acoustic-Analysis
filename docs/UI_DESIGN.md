@@ -75,11 +75,42 @@ Hosts the current screen. One screen visible at a time; the rail and soft-keys s
 | Compare | several clips overlaid; a "what differs most" ranked table |
 | Filters | the filter chain - live params, frequency-response (Bode) plot, before/after spectrum + spectrogram, A/B listen |
 | Noise | capture a noise profile; environmental analysis (NC, Ln, tones); denoise preview |
+| Slice | import a tap-test video, find its strikes, cut and label one snippet per tap, save them into the dataset |
 | Label | assign a quality class, grader, notes; add to the reference set |
 | Dataset | table of clips + labels + key features; filter, export, delete, per-clip report |
 | Calibrate | reference-tone -> counts_per_pascal workflow |
 | Learn | synthesise a tone / decay, apply a filter, watch what changes - a teaching bench |
 | Settings | config presets, paths, theme |
+
+### Slice screen layout
+
+The only screen that is not about a single clip, so it gets its own arrangement:
+
+```
++-------------------------------------------------------------------------+
+| Open video... | taps.mp4        sensitivity [====]  Find strikes  Save   |
++-------------------------------------------------------+-----------------+
+| Whole take (min/max envelope, cuts, view box)          | video frame at  |
++--------------------------------------------------------+ the playhead    |
+| Detail - drag to select                                 |                |
+|                                                         +-----------------+
+|                                                         | grade  [ 3A v ] |
+|                                                         | defect [good v] |
++---------------------------------------------------------+ Add selection   |
+| |< strike  Play  Play sel  Stop  strike >|  [=scrub=]   | Apply to rows   |
++---------------------------------------------------------+ Play / Snap /   |
+| # | start | dur | grade | defect | saved                 | Delete / Send   |
++---------------------------------------------------------+-----------------+
+```
+
+Two waveforms, not one: the overview answers "where am I and what is left to
+do" (cuts are amber unlabelled, blue labelled, green saved), the detail answers
+"exactly where does this cut start". The video frame is a labelling aid - it
+says which tile is under the hammer - and deliberately does not play.
+
+Number keys 1..n on the snippet table set the grade of the selected rows, Space
+plays them and Delete removes them; taps come in runs of one tile, so the fast
+path has to be one keystroke per snippet.
 
 ## Transparency / education
 

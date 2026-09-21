@@ -31,6 +31,52 @@ raw clip (mono, float)
 Everything from "remove DC offset" onward is pure: `numpy` array in, numbers out, no
 audio/file/GUI calls. That is what makes it unit-testable with synthetic signals.
 
+## 1a. Getting to a clip: slicing a long take
+
+Everything in §1 assumes a clip holding **one** strike. Real footage rarely
+arrives that way - a tap test is usually filmed as one continuous take with
+dozens of strikes on several tiles. `dsp/segmentation.py` turns such a take into
+clips, and the Slice screen drives it.
+
+```text
+video file
+  -> ffmpeg: decode audio track, downmix to mono, resample   (io/videoaudio)
+  -> RMS envelope over ~5 ms                                 (moving_rms)
+  -> noise floor = 25th percentile of that envelope          (noise_floor)
+  -> threshold = mult x floor; keep rising edges only
+  -> enforce a refractory gap between accepted onsets
+  -> drop candidates below a fraction of the loudest strike
+  -> walk each crossing back to the start of its attack      (detect_onsets)
+  -> window each onset: [-30 ms .. +700 ms], clamped,
+     trimmed so no window reaches into the next strike       (segments_from_onsets)
+  -> one clip per strike -> §1
+```
+
+**Why the noise floor is a percentile of the take itself.** `detect_impact`
+(§1) can use the clip's own pre-roll as its reference because the clip was cut
+to have one. A whole take has no such quiet header - it has strikes, gaps,
+handling noise and talking. The strikes are loud, brief and comparatively rare,
+so the low percentiles of the envelope describe the room between them. Taking a
+mean instead would let the strikes raise the very floor they are measured
+against.
+
+**Why onsets are walked back.** A threshold crossing happens partway up the
+attack, delayed by the envelope window and the threshold margin. Cutting there
+would remove the leading edge - exactly the part `detect_impact` looks for and
+the decay fit starts from. Each onset is therefore moved back to where the level
+last sat at the noise floor.
+
+**Why windows are trimmed by `max(pre_ms, guard_ms)`.** Two strikes closer
+together than the ring window would otherwise produce overlapping clips, and the
+same audio would be exported twice under two labels. The trim is the larger of
+the pre-roll and the guard because the *next* window already begins `pre_ms`
+early to collect its own lead-in.
+
+Every threshold here is **provisional** - `config.yaml` `video.onsets` was tuned
+against synthetic taps only, never against real footage. Expect to move
+`threshold_mult` (the Slice screen's sensitivity slider) on the first real
+video, and `min_gap_s` if the operator taps faster than 3 per second.
+
 ## 2. Windows and why
 
 | Window | Default | Purpose |
@@ -129,9 +175,24 @@ screen or `cli noise`.
 
 ### 6.1 Labels
 
-Configurable set (`config.yaml` → `labels`). Default:
-`good`, `cracked`, `corner_broken`, `other_defect`, plus `retest` / `discard` markers.
-The GUI's Label tab writes `label`, `grader`, `labelled_at`, `confidence` per clip.
+**Two independent axes per clip**, both configurable (`config.yaml` → `labels`):
+
+| Axis | Column | Default set | What it says |
+|---|---|---|---|
+| defect | `label` | `good`, `cracked`, `corner_broken`, `other_defect` (+ `retest` / `discard`) | what is physically wrong with the tile |
+| grade | `grade_tier` | `3A`, `3B`, `4`, `5` | its cosmetic grade — the same tiers the camera station sorts into |
+
+They are kept apart rather than merged into one class list because they are
+genuinely independent: a grade-4 tile can be perfectly intact and a grade-3A
+tile can be cracked. A merged label would make the exported dataset unable to
+answer either question cleanly, and the acoustic signal only speaks to the
+first axis anyway — the grade travels with the row so the two stations' data
+can be joined later.
+
+The Label screen writes the defect axis (plus `grader`, `labelled_at`,
+`confidence`); the Slice screen writes both. `grade_tier` is nullable, so clips
+labelled before it existed, and clips where only the defect matters, stay
+valid.
 
 ### 6.2 Reference profile — `classify/reference.py`
 
