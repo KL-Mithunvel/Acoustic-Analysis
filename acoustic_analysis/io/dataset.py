@@ -180,6 +180,13 @@ class Dataset:
         )
         self._db.commit()
 
+    def update_path(self, old, new) -> int:
+        """Re-point clips stored at ``old`` to ``new`` (library move/rename).
+        Returns the number of rows changed."""
+        cur = self._db.execute("UPDATE clips SET path = ? WHERE path = ?", (str(new), str(old)))
+        self._db.commit()
+        return cur.rowcount
+
     def delete_clip(self, clip_id: int) -> None:
         self._db.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
         self._db.commit()
