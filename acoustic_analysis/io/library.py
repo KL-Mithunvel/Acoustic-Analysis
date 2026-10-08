@@ -88,7 +88,7 @@ class Library:
             raise LibraryError(f"not a folder: {folder}")
         dirs, files = [], []
         for p in d.iterdir():
-            if p.name == TRASH_DIR:
+            if p.name.startswith("."):          # .trash, .raw - app-internal
                 continue
             if p.is_dir():
                 dirs.append(Entry(p.name, p, True))
@@ -101,7 +101,7 @@ class Library:
         """Every folder under root (relative paths, root itself as ``.``)."""
         out = [Path(".")]
         for p in sorted(self.root.rglob("*")):
-            if p.is_dir() and TRASH_DIR not in p.relative_to(self.root).parts:
+            if p.is_dir() and not any(q.startswith(".") for q in p.relative_to(self.root).parts):
                 out.append(p.relative_to(self.root))
         return out
 
