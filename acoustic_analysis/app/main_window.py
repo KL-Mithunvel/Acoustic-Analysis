@@ -27,7 +27,10 @@ from .screens import (
     LearnScreen,
     NoiseScreen,
 )
+from ..io.library import Library
+from .screens_collect import CollectScreen
 from .screens_home import HomeScreen
+from .screens_library import LibraryScreen
 from .screens_live import CalibrateScreen, MonitorScreen, RecordScreen, SettingsScreen
 from .screens_video import SliceScreen
 from .service import AnalysisService
@@ -38,13 +41,15 @@ from .widgets import MplPanel, NavItem, RailButton, show_explanation
 _POLL_MS = 200
 
 # Sidebar groups, top to bottom.
+# The everyday workflow is the first group; everything else folds away under
+# ADVANCED (collapsed until clicked or navigated to). The app opens on Collect.
 _NAV_GROUPS: list[tuple[str, list]] = [
-    ("SESSION", [HomeScreen]),
-    ("LIVE", [MonitorScreen, RecordScreen, CalibrateScreen]),
-    ("ANALYZE", [AnalyzeScreen, CompareScreen, FiltersScreen, NoiseScreen]),
-    ("DATA", [SliceScreen, LabelScreen, DatasetScreen]),
-    ("HELP", [LearnScreen, SettingsScreen]),
+    ("WORKFLOW", [CollectScreen, LibraryScreen, AnalyzeScreen, DatasetScreen]),
+    ("APP", [HomeScreen, SettingsScreen, LearnScreen]),
+    ("ADVANCED", [SliceScreen, CompareScreen, FiltersScreen, NoiseScreen, CalibrateScreen,
+                  MonitorScreen, RecordScreen, LabelScreen]),
 ]
+_COLLAPSIBLE = {"ADVANCED"}
 
 
 @dataclass
@@ -54,6 +59,7 @@ class AppContext:
     service: AnalysisService
     explainer: Explainer
     db: Dataset
+    library: Library | None = None
     navigate: Callable[[str], None] | None = None
     open_files: Callable[[], None] | None = None
     _session_id: int | None = None
@@ -84,6 +90,10 @@ class MainWindow(tk.Tk):
             explainer=Explainer(),
             db=Dataset(db_path),
         )
+        self.ctx.library = Library(
+            resolve_path(cfg, "recordings_dir"),
+            on_path_changed=lambda old, new: new is not None and self.ctx.db.update_path(old, new),
+        )
         self.ctx.navigate = self._goto
         self.ctx.open_files = self.open_files
 
@@ -105,7 +115,6 @@ class MainWindow(tk.Tk):
 
         body = ttk.Frame(self)
         self._build_sidebar(body)
-        self._build_rail(body)
         self._content = ttk.Frame(body)
         self._content.pack(side="left", fill="both", expand=True)
         self._content.pack_propagate(False)
@@ -153,17 +162,42 @@ class MainWindow(tk.Tk):
         rail.pack_propagate(False)
         tk.Frame(parent, bg=LINE, width=1).pack(side="left", fill="y")
         self._nav_items: list[NavItem] = []
+        self._group_of: dict[int, str] = {}
+        self._group_body: dict[str, tk.Frame] = {}
+        self._group_head: dict[str, tk.Label] = {}
         flat = 0
         for gi, (group, classes) in enumerate(_NAV_GROUPS):
-            tk.Label(rail, text=group, bg=SIDEBAR, fg=FG_MUTE, anchor="w",
-                     font=ui_font(8, "bold"), padx=16).pack(
-                         fill="x", pady=(4 if gi == 0 else 14, 5))
+            head = tk.Label(rail, text=group, bg=SIDEBAR, fg=FG_MUTE, anchor="w",
+                            font=ui_font(8, "bold"), padx=16)
+            head.pack(fill="x", pady=(4 if gi == 0 else 14, 5))
+            body = tk.Frame(rail, bg=SIDEBAR)
+            self._group_body[group], self._group_head[group] = body, head
             for _cls in classes:
                 idx = flat
-                item = NavItem(rail, _title_for(_cls), lambda i=idx: self._show(i))
+                item = NavItem(body, _title_for(_cls), lambda i=idx: self._show(i))
                 item.pack(fill="x")
                 self._nav_items.append(item)
+                self._group_of[idx] = group
                 flat += 1
+            if group in _COLLAPSIBLE:
+                head.configure(cursor="hand2")
+                head.bind("<Button-1>", lambda _e, g=group: self._toggle_group(g))
+                self._set_group(group, False)
+            else:
+                body.pack(fill="x")
+
+    def _set_group(self, group: str, open_: bool) -> None:
+        head, body = self._group_head[group], self._group_body[group]
+        head.configure(text=f"{group}  {'▾' if open_ else '▸'}")
+        if open_:
+            body.pack(fill="x", after=head)
+        else:
+            body.pack_forget()
+        self._group_open = getattr(self, "_group_open", {})
+        self._group_open[group] = open_
+
+    def _toggle_group(self, group: str) -> None:
+        self._set_group(group, not self._group_open.get(group, False))
 
     def _build_rail(self, parent):
         rail = tk.Frame(parent, bg=SIDEBAR, width=64)
@@ -204,11 +238,11 @@ class MainWindow(tk.Tk):
     def _update_soft_keys(self, screen):
         keys = getattr(screen, "soft_keys", lambda: [])()
         for i, btn in enumerate(self._soft_btns):
-            if i < len(keys):
+            btn.pack_forget()
+            if i < len(keys):                  # unused keys are hidden, not shown greyed-out
                 label, cmd = keys[i]
                 btn.configure(text=label, command=cmd, state="normal")
-            else:
-                btn.configure(text="", command=lambda: None, state="disabled")
+                btn.pack(side="left", padx=(0, 6))
         edit = getattr(screen, "edit_actions", lambda: None)()
         if edit:
             cancel, apply_ = edit
@@ -246,6 +280,9 @@ class MainWindow(tk.Tk):
             s.pack_forget()
         self.screens[index].pack(fill="both", expand=True)
         self._current = index
+        group = self._group_of.get(index)
+        if group in _COLLAPSIBLE and not self._group_open.get(group):
+            self._set_group(group, True)          # never hide the screen you're on
         for i, item in enumerate(self._nav_items):
             item.set_active(i == index)
         self._refresh_current()
@@ -370,6 +407,8 @@ class MainWindow(tk.Tk):
 
     def _on_close(self):
         try:
+            for s in self.screens:
+                getattr(s, "shutdown", lambda: None)()
             audio_out.stop()
             self.ctx.service.stop()
             self.ctx.db.close()

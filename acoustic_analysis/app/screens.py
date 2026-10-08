@@ -453,7 +453,7 @@ class LabelScreen(_Base):
 
 # --------------------------------------------------------------------------
 class DatasetScreen(_Base):
-    title = "Dataset"
+    title = "Export"
 
     def __init__(self, master, ctx):
         super().__init__(master, ctx)

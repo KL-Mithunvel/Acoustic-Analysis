@@ -46,14 +46,14 @@ class HomeScreen(_Base):
 
         actions = ttk.Labelframe(self, text="Quick actions", padding=10)
         actions.pack(fill="x", pady=(14, 0))
-        ttk.Button(actions, text="Record a tap   R", style="Accent.TButton",
-                   command=lambda: ctx.navigate("Record")).pack(side="left")
+        ttk.Button(actions, text="Collect taps", style="Accent.TButton",
+                   command=lambda: ctx.navigate("Collect")).pack(side="left")
         ttk.Button(actions, text="Open WAV files   Ctrl+O",
                    command=lambda: ctx.open_files()).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Analyze clips",
                    command=lambda: ctx.navigate("Analyze")).pack(side="left", padx=(8, 0))
-        ttk.Button(actions, text="Dataset / export",
-                   command=lambda: ctx.navigate("Dataset")).pack(side="left", padx=(8, 0))
+        ttk.Button(actions, text="Export dataset",
+                   command=lambda: ctx.navigate("Export")).pack(side="left", padx=(8, 0))
 
         recent = ttk.Labelframe(self, text="Recent clips", padding=6)
         recent.pack(fill="both", expand=True, pady=(14, 0))
