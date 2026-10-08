@@ -4,6 +4,13 @@ Legend: 🔴 bug / rule violation | 🟡 incomplete feature | 🟢 not started |
 
 ## In Progress
 
+- [ ] 🟡 **Collect screen: first run on the real rig.** Built 2026-10-08 (v0.3) and
+  tested on synthetic signals only. On the first real session: run Setup A + B and read the
+  repeatability score; tune the Sensitivity slider and `machine.min_residual_snr_db`; check
+  dry strikes really land in `rejected/` and real taps don't; confirm the adaptive trigger
+  doesn't fire on the motor alone; confirm Space-to-start and the level bar feel right.
+  Watch for a low repeatability score (fix the striker mounting, not the thresholds).
+
 - [ ] 🟡 **Slice screen: tune it on real footage.** Built and tested 2026-09-20 (v0.2),
   but every video it has ever seen was synthetic. On the first real recording, expect to
   move `config.yaml` `video.onsets.threshold_mult` (the sensitivity slider) and possibly
@@ -28,6 +35,14 @@ Legend: 🔴 bug / rule violation | 🟡 incomplete feature | 🟢 not started |
   schema it expects
 
 ### Features
+- [ ] 🟢 Settings presets ("Quiet room" / "Noisy workshop") - deliberately not shipped in
+  v0.3: the numbers would be invented before any real recording exists
+- [ ] 🟢 Collect: let the owner choose whether labelling a clip "good" also flags it into
+  the reference set
+- [ ] 🟢 Library: drag a clip onto a folder inside the right-hand list (currently only onto
+  the folder tree); rename/move multi-selection prompts
+- [ ] 🟢 Grade tier (3A/3B/4/5) one-key labelling on Collect -> Review (defect class only
+  for now; tiers still available on Slice)
 - [ ] 🟢 `dsp/loudness.py` - equal-loudness-contour phon/sone (deferred)
 - [ ] 🟢 Slice: a headless CLI counterpart (`cli slice video.mp4 --auto --grade 4
   --defect good`) for bulk work once the onset thresholds are trusted on real footage

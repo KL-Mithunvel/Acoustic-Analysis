@@ -35,11 +35,24 @@ dataset for training a classifier.
   real-mic verification, pistonphone calibration against hardware, threshold tuning on
   real tiles *and on real footage*, PyInstaller build, `dsp/loudness.py`. See
   `TODO.md`.
+- **v0.3 (2026-10-08) - collection workflow.** Added a guided **Collect** screen
+  (Setup / Listen / Review; sound-triggered capture, motor spectral profile + striker
+  time-domain template removed from every strike, automatic tile / no-tile sort), a
+  **Library** file manager (real folders, rename/move/drag-drop/delete with undo, keeps
+  wav + sidecar + db path together), a sidebar cut to Collect / Library / Analyze /
+  Export + APP + a collapsible ADVANCED group (the old right icon rail and native menu
+  bar are gone), and plain-language **Basic settings** saved to
+  `data/user_settings.yaml` (never rewrites `config.yaml`, which would strip its
+  comments). 237 tests. **All of it is verified on synthetic signals only - none of it
+  has touched the real microphone or the real striker rig.**
 - **Entry points:**
   - `python main.py` — one-command launcher: bootstraps `./venv` + deps on first run,
     then the GUI (or forwards args to the CLI)
-  - `python -m acoustic_analysis` — GUI (Home / Monitor / Record / Calibrate / Analyze /
-    Compare / Filters / Noise / **Slice** / Label / Dataset / Learn / Settings)
+  - `python -m acoustic_analysis` — GUI, opens on **Collect**. Sidebar: Collect / Library /
+    Analyze / Export; Home / Settings / Learn; ADVANCED (Slice / Compare / Filters /
+    Noise / Calibrate / Monitor / Record / Label)
+  - `python tools/make_screenshots.py` — regenerates `docs/screenshots/` (README images)
+    from the real app on synthetic demo data (Windows, needs a visible desktop)
   - `python -m acoustic_analysis.cli devices | analyze | noise | calibrate | export`
 
 ---
@@ -95,6 +108,11 @@ acoustic_analysis/
     environment.py      nc_rating, dominant_tones, environmental_analysis
     segmentation.py     moving_rms, envelope_minmax, noise_floor, detect_onsets,
                         segments_from_onsets - cutting a long take into strikes
+    trigger.py          SoundTrigger - block-by-block continuous trigger, adaptive threshold
+                        (floor_mult x tracked background), pre-roll, cooldown
+    machine_noise.py    build_striker_template (aligned average of dry strikes + repeatability),
+                        subtract_striker (align +/-max_shift_ms, LS-scale, clamp), clean_clip
+                        (strike -> template -> motor spectral -> tile/no_tile/no_strike verdict)
     loudness.py         equal-loudness-contour phon/sone   [DEFERRED - not written]
   features.py           conditioned_windows (shared), extract_features -> flat dict + validity gate
   segments.py           PURE - Segment / SnippetSet + add/remove/renumber/snap/summary
@@ -107,10 +125,16 @@ acoustic_analysis/
     wavstore.py         save_clip / load_clip (float WAV + JSON sidecar)
     videoaudio.py       ffmpeg: extract_audio (cached), extract_frame_png, probe  [subprocess - smoke only]
     snippets.py         <video>.snippets.json sidecar - in-progress cuts, save/load
+    library.py          Library - the ONLY place clips are renamed/moved/deleted: root-confined
+                        paths, no overwrite, delete -> .trash, undo stack, on_path_changed hook
+                        (-> Dataset.update_path). Dot-folders (.trash, .raw) are hidden.
+    session.py          SessionStore.handle - clean + file one captured clip: tile ->
+                        <session>/, no tile -> <session>/rejected/, raw -> <session>/.raw/
+    machine_profile.py  MachineProfile (motor recording + StrikerTemplate) save/load as .npz
     dataset.py          SQLite: sessions / clips / features / labels (label + grade_tier);
                         export_csv / export_json; _migrate() adds columns to old files
   app/                  Tkinter, laptop desktop, dark instrument-look shell
-    main_window.py      Tk root, status bar + left sidebar nav + button rail + soft-key bar, worker poll
+    main_window.py      Tk root, status bar (+ Open/Help buttons) + left sidebar nav (collapsible ADVANCED) + soft-key bar, worker poll
     theme.py            dark ttk style + matching matplotlib rcParams
     state.py            SharedState + ClipData - thread-safe clip list, selection, profile
     service.py          AnalysisService - feature extraction + grade on a worker thread
@@ -122,6 +146,9 @@ acoustic_analysis/
     screens.py          Analyze, Compare, Filters, Noise, Label, Dataset, Learn
     screens_live.py     Monitor, Record, Calibrate, Settings
     screens_video.py    Slice - video -> waveform -> cut -> label -> dataset
+    screens_collect.py  Collect - Setup / Listen / Review. Audio callbacks only put items on a
+                        queue; the Tk thread drains it (_pump, 50 ms). Owns no DSP.
+    screens_library.py  Library - file manager UI over io/library.Library (drag-drop onto tree)
 config.yaml             all tunable parameters
 tests/                  test_<module>.py, synthetic signals; test_app_gui_smoke.py +
                         test_app_slice_gui.py (skip w/o display); test_video_slicing.py
@@ -278,6 +305,24 @@ reference screenshot in `docs/` stays local). Audio datasets are never committed
 - **`video.snippet.post_ms` (700 ms) is a guess.** It has to outlast the ring of a real
   tile, and no real tile has been recorded. Too short truncates the decay fit, which is
   one of the more discriminating features.
+- **Collect / machine-noise removal has never run on the real rig** (added 2026-10-08).
+  `SessionRecorder`, `SoundTrigger`'s adaptive threshold, the striker-template
+  subtraction and the tile/no-tile verdict are tested only against synthetic signals
+  with known answers. Unknowns: whether the real striker is repeatable enough (the
+  repeatability score exists to tell), whether `machine.*` thresholds
+  (`min_residual_snr_db`, `max_shift_ms`, `fit_ms`, ...) suit real tiles, and how the
+  solenoid click overlapping the first ms of the tile ring affects features. The
+  `machine:` and `capture.floor_mult` values are provisional. With no template recorded a
+  striker click reads as a tile, so tile/no-tile only works after Setup step B.
+- **`Collect` does not set the reference-set flag** when labelling; "Build reference from
+  flagged" still needs the Label screen's "add to reference set". Left as-is on purpose
+  (whether "good" implies "reference" is the owner's call).
+- **Tk test flakiness:** creating many `tk.Tk()` roots in one pytest process intermittently
+  raises `TclError` inside `tk.Tk()` (seen as a missing `init.tcl` / `tcl_findLibrary`).
+  `test_app_collect_gui.py` therefore shares one module-scoped window; keep new GUI
+  tests on a shared window rather than one per test.
+- `Library` renames/moves only keep the database in step when done through it; moving
+  files in Explorer leaves `clips.path` pointing at the old location.
 - `dsp/loudness.py` (equal-loudness-contour phon/sone) — deferred, not written.
 - Denoise (`noise.reduce_noise`) can run in the analysis path (`noise.apply_in_analysis`)
   but features from denoised audio are not validated and can mislead.

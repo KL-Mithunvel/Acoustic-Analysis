@@ -33,6 +33,9 @@ dist/
 *.png
 *.jpg
 *.jpeg
+# ...except the README's own screenshots (regenerate with tools/make_screenshots.py)
+!docs/screenshots/
+!docs/screenshots/*.png
 
 # Editors / OS
 .idea/
