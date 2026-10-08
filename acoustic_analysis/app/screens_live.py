@@ -18,6 +18,7 @@ from ..dsp.conditioning import bandpass, rms
 from ..io import audio_out, recorder
 from .screens import _Base
 from .state import ClipData
+from .theme import ui_font
 from .widgets import MplPanel, info_button
 
 
@@ -256,22 +257,85 @@ class CalibrateScreen(_Base):
         self.result.set(f"applied: calibration.counts_per_pascal = {self._cpp:.6g}")
 
 
+# (config path, label, plain-language help, min, max, step, decimals)
+_BASIC = (
+    (("capture", "capture_duration_s"), "Clip length", "How many seconds to keep after each tap.", 0.3, 2.0, 0.05, 2, "s"),
+    (("capture", "pre_trigger_ms"), "Lead-in", "Quiet audio kept before the strike. Needed to measure the noise floor.", 20, 300, 10, 0, "ms"),
+    (("capture", "cooldown_s"), "Gap between taps", "Ignore new sounds for this long after a tap, so one strike is not counted twice.", 0.3, 5.0, 0.1, 1, "s"),
+    (("machine", "motor_strength"), "Motor-noise removal", "0 = off, 1 = normal, higher removes more but can dull the ring.", 0.0, 3.0, 0.1, 1, "x"),
+    (("machine", "min_residual_snr_db"), "How clearly a tile must ring", "A strike counts as a tile tap only if the ring is this far above the background. Raise it to reject more doubtful taps.", 3, 30, 1, 0, "dB"),
+    (("machine", "dry_strikes_target"), "Dry strikes to record", "How many striker-only strikes the Setup step collects. More = a steadier template.", 5, 40, 1, 0, "strikes"),
+)
+
+
 class SettingsScreen(_Base):
     title = "Settings"
 
     def __init__(self, master, ctx):
         super().__init__(master, ctx)
-        bar = ttk.Frame(self)
+        self._vars: dict[tuple, tk.DoubleVar] = {}
+
+        basic = ttk.Labelframe(self, text="Basic settings", padding=10)
+        basic.pack(fill="x")
+        basic.columnconfigure(2, weight=1)
+        for r, (path, label, helptext, lo, hi, step, dec, unit) in enumerate(_BASIC):
+            var = tk.DoubleVar()
+            self._vars[path] = var
+            ttk.Label(basic, text=label, font=ui_font(10, "bold")).grid(row=r, column=0, sticky="w", pady=4)
+            sp = ttk.Spinbox(basic, from_=lo, to=hi, increment=step, textvariable=var, width=7,
+                             format=f"%.{dec}f")
+            sp.grid(row=r, column=1, sticky="w", padx=8)
+            ttk.Label(basic, text=f"{unit}   {helptext}", style="Dim.TLabel", wraplength=700).grid(
+                row=r, column=2, sticky="w")
+        row = ttk.Frame(basic)
+        row.grid(row=len(_BASIC), column=0, columnspan=3, sticky="w", pady=(10, 0))
+        ttk.Button(row, text="Apply and save", style="Accent.TButton", command=self._apply_basic).pack(side="left")
+        ttk.Button(row, text="Reset to defaults", command=self._reset_basic).pack(side="left", padx=8)
+        self.note = tk.StringVar(value="Saved to data/user_settings.yaml - config.yaml is never rewritten.")
+        ttk.Label(row, textvariable=self.note, style="Dim.TLabel").pack(side="left", padx=8)
+
+        adv = ttk.Labelframe(self, text="Advanced - full configuration (read-only; edit config.yaml for the rest)", padding=6)
+        adv.pack(fill="both", expand=True, pady=(10, 0))
+        bar = ttk.Frame(adv)
         bar.pack(fill="x")
         ttk.Button(bar, text="Reload config.yaml", command=self._reload).pack(side="left")
         ttk.Button(bar, text="Save preset...", command=self._save_preset).pack(side="left", padx=4)
         ttk.Button(bar, text="Load preset...", command=self._load_preset).pack(side="left")
-        self.text = tk.Text(self, wrap="none", relief="flat")
+        self.text = tk.Text(adv, wrap="none", relief="flat", height=8)
         self.text.pack(fill="both", expand=True, pady=6)
+
+    def _load_basic(self):
+        cfg = self.ctx.state.cfg
+        for (sec, key), var in self._vars.items():
+            var.set(cfg[sec][key])
+
+    def _apply_basic(self):
+        from ..config import save_user_settings
+
+        changes: dict = {}
+        try:
+            for (sec, key), var in self._vars.items():
+                spec = next(b for b in _BASIC if b[0] == (sec, key))
+                val = min(max(float(var.get()), spec[3]), spec[4])
+                changes.setdefault(sec, {})[key] = int(val) if spec[6] == 0 else round(val, spec[6])
+        except tk.TclError:
+            self.note.set("One of the values is not a number.")
+            return
+        save_user_settings(self.ctx.state.cfg, changes)
+        self._load_basic()
+        self.note.set("Applied. Used from the next recording; saved for next time.")
+
+    def _reset_basic(self):
+        from ..config import reset_user_settings
+
+        reset_user_settings(self.ctx.state.cfg)
+        self.refresh()
+        self.note.set("Back to the shipped defaults.")
 
     def refresh(self):
         import yaml
 
+        self._load_basic()
         self.text.configure(state="normal")
         self.text.delete("1.0", "end")
         self.text.insert("1.0", yaml.safe_dump(self.ctx.state.cfg, sort_keys=False))

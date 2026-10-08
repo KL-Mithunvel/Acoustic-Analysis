@@ -123,3 +123,20 @@ def test_library_move_updates_dataset_path(win):
     lib.make_folder("", "good_db")
     new = lib.move("db_a.wav", "good_db")
     assert win.ctx.db.get_clip(cid)["path"] == str(new)
+
+
+def test_basic_settings_apply_save_and_reset(win):
+    from acoustic_analysis.config import user_settings_path
+
+    s = _screen(win, "Settings")
+    win._goto("Settings")
+    win.update()
+    cfg = win.ctx.state.cfg
+    default = cfg["capture"]["cooldown_s"]
+    s._vars[("capture", "cooldown_s")].set(2.5)
+    s._vars[("machine", "dry_strikes_target")].set(99)          # out of range -> clamped to 40
+    s._apply_basic()
+    assert cfg["capture"]["cooldown_s"] == 2.5 and cfg["machine"]["dry_strikes_target"] == 40
+    assert user_settings_path(cfg).is_file()
+    s._reset_basic()
+    assert cfg["capture"]["cooldown_s"] == default and not user_settings_path(cfg).exists()

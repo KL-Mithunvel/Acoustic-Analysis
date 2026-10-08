@@ -139,10 +139,12 @@ def apply_theme(root: tk.Misc) -> None:
     style.configure("TScale", background=BG, troughcolor=INPUT)
     style.configure("TCheckbutton", background=BG, foreground=FG, focuscolor=ACCENT)
     style.map("TCheckbutton", background=[("active", BG)])
-    style.configure("Vertical.TScrollbar", background=PANEL_2, troughcolor=BG, bordercolor=BG,
-                    arrowcolor=FG_DIM)
-    style.configure("Horizontal.TScrollbar", background=PANEL_2, troughcolor=BG, bordercolor=BG,
-                    arrowcolor=FG_DIM)
+    for orient in ("Vertical", "Horizontal"):
+        name = f"{orient}.TScrollbar"
+        style.configure(name, background=INPUT, troughcolor=BG, bordercolor=BG, lightcolor=INPUT,
+                        darkcolor=INPUT, arrowcolor=FG_DIM, gripcount=0, relief="flat")
+        style.map(name, background=[("active", LINE), ("pressed", FG_MUTE)],
+                  lightcolor=[("active", LINE)], darkcolor=[("active", LINE)])
 
     root.option_add("*Listbox.background", PANEL_2)
     root.option_add("*Listbox.foreground", FG)

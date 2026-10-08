@@ -83,10 +83,6 @@ class LibraryScreen(_Base):
             w.bind("<Return>", lambda _e: self.open_selected())
 
     # -- display -------------------------------------------------------
-    def soft_keys(self):
-        return [("New folder", self.new_folder), ("Rename", self.rename),
-                ("Move to...", self.move_dialog), ("Undo", self.undo)]
-
     def refresh(self):
         self._fill_folders()
         self._fill_files()
@@ -127,7 +123,8 @@ class LibraryScreen(_Base):
         for e in entries:
             rel = self.lib.relative(e.path).as_posix()
             if e.is_dir:
-                n = sum(1 for _ in e.path.rglob("*.wav"))
+                n = sum(1 for w in e.path.rglob("*.wav")
+                        if not any(q.startswith(".") for q in w.relative_to(e.path).parts))
                 self.files.insert("", "end", iid=rel, text=f"▸  {e.name}",
                                   values=("", f"{n} clips", ""), tags=("dir",))
             else:

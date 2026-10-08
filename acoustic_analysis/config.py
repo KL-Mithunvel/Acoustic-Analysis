@@ -53,3 +53,68 @@ def resolve_path(cfg: dict, key: str) -> Path:
     """
     value = Path(cfg["paths"][key])
     return value if value.is_absolute() else _REPO_ROOT / value
+
+
+# -- user settings -----------------------------------------------------------
+# The Settings screen's "Basic" controls are saved here, *not* into config.yaml:
+# rewriting that file from a dict would strip every explanatory comment in it.
+# The overrides file is layered over config.yaml at start-up; deleting it
+# restores the shipped defaults.
+USER_SETTINGS_NAME = "user_settings.yaml"
+
+
+def user_settings_path(cfg: dict) -> Path:
+    return resolve_path(cfg, "data_dir") / USER_SETTINGS_NAME
+
+
+def _deep_update(base: dict, over: dict) -> dict:
+    for k, v in over.items():
+        if isinstance(v, dict) and isinstance(base.get(k), dict):
+            _deep_update(base[k], v)
+        else:
+            base[k] = v
+    return base
+
+
+def apply_user_settings(cfg: dict) -> dict:
+    """Layer ``<data_dir>/user_settings.yaml`` over ``cfg`` in place; no-op if absent
+    or unreadable. Returns ``cfg``."""
+    path = user_settings_path(cfg)
+    if path.is_file():
+        try:
+            over = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            return cfg
+        if isinstance(over, dict):
+            _deep_update(cfg, over)
+    return cfg
+
+
+def save_user_settings(cfg: dict, changes: dict) -> Path:
+    """Merge ``changes`` (nested dict) into the overrides file and into ``cfg``."""
+    path = user_settings_path(cfg)
+    current: dict = {}
+    if path.is_file():
+        try:
+            current = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            current = {}
+    _deep_update(current, changes)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(current, sort_keys=False), encoding="utf-8")
+    _deep_update(cfg, changes)
+    return path
+
+
+def reset_user_settings(cfg: dict) -> None:
+    """Delete the overrides file and reload the shipped defaults into ``cfg`` in place."""
+    path = user_settings_path(cfg)
+    paths = dict(cfg.get("paths", {}))
+    try:
+        path.unlink()
+    except OSError:
+        pass
+    fresh = load_config()
+    fresh["paths"] = paths                      # keep where this run stores its data
+    cfg.clear()
+    cfg.update(fresh)

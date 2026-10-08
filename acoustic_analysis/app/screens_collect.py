@@ -494,10 +494,6 @@ class CollectScreen(_Base):
         self._refresh_setup_state()
         self._update_counts()
 
-    def soft_keys(self):
-        return [("Setup", lambda: self._show_page(0)), ("Listen", lambda: self._show_page(1)),
-                ("Review", lambda: self._show_page(2))]
-
     def _start_recorder(self, mode, on_clip):
         try:
             self.rec = self._new_recorder(on_clip)

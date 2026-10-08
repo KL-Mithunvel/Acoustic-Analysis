@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
-from ..config import load_config, resolve_path
+from ..config import apply_user_settings, load_config, resolve_path
 from ..io import audio_out
 from ..io.dataset import Dataset
 from ..io.wavstore import load_clip
@@ -81,6 +81,7 @@ class MainWindow(tk.Tk):
         apply_theme(self)
 
         cfg = cfg or load_config()
+        apply_user_settings(cfg)      # Basic-settings overrides saved from a previous run
         state = SharedState(cfg)
         db_path = resolve_path(cfg, "database")
         self.ctx = AppContext(
@@ -109,7 +110,6 @@ class MainWindow(tk.Tk):
         self._current = 0
         self._history: list[int] = []
 
-        self._build_menu()
         self._build_status_bar()   # status bar (top) + status message (bottom)
         self._build_soft_keys()    # soft-key bar (bottom) - pack fixed edges before the body
 
@@ -141,6 +141,13 @@ class MainWindow(tk.Tk):
         dot.create_oval(2, 2, 9, 9, fill=ACCENT, outline=ACCENT)
         dot.pack(side="left", padx=(0, 8))
         ttk.Label(bar, textvariable=self._screen_title, style="StatusTitle.TLabel").pack(side="left")
+
+        # File / help actions live in the app's own dark bar - a native Windows
+        # menu bar cannot be themed and shows up as a white strip.
+        for text, cmd in (("Help", self._glossary), ("Open video…", self._open_video),
+                          ("Open WAV…", self.open_files)):
+            ttk.Button(bar, text=text, style="Ghost.TButton", padding=(8, 2), command=cmd).pack(
+                side="right", padx=(6, 0))
 
         self._src_var = tk.StringVar(value="src -")
         self._cal_var = tk.StringVar(value="uncal")
@@ -335,20 +342,6 @@ class MainWindow(tk.Tk):
             self._status.set(f"saved {path}")
 
     # -- menu / shortcuts -------------------------------------------
-    def _build_menu(self):
-        menubar = tk.Menu(self)
-        file_menu = tk.Menu(menubar, tearoff=0)
-        file_menu.add_command(label="Open WAV...", accelerator="Ctrl+O", command=self.open_files)
-        file_menu.add_command(label="Open video to slice...", command=self._open_video)
-        file_menu.add_separator()
-        file_menu.add_command(label="Quit", command=self._on_close)
-        menubar.add_cascade(label="File", menu=file_menu)
-
-        help_menu = tk.Menu(menubar, tearoff=0)
-        help_menu.add_command(label="Glossary", command=self._glossary)
-        menubar.add_cascade(label="Help", menu=help_menu)
-        self.config(menu=menubar)
-
     def _bind_shortcuts(self):
         self.bind("<Control-o>", lambda _e: self.open_files())
         self.bind("<F5>", lambda _e: self.ctx.service.submit_selection())
