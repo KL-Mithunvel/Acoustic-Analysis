@@ -130,3 +130,61 @@ class Recorder:  # pragma: no cover - hardware dependent
         ):
             clip = result.get(timeout=timeout_s)
         return clip, self.fs
+
+
+class SessionRecorder:  # pragma: no cover - hardware dependent
+    """Open the mic once and keep listening: every loud event becomes a clip.
+
+    Sound-triggered and independent of whatever fires the striker. Runs the pure
+    ``dsp.trigger.SoundTrigger`` on PortAudio's callback thread; finished clips
+    go to ``on_clip(samples, fs)`` and live meter values to ``on_level(level,
+    threshold, state)``. Both callbacks run on the audio thread - hand off to
+    the GUI with ``after()``, don't touch widgets directly.
+    """
+
+    def __init__(self, cfg: dict, on_clip, on_level=None, device=None):
+        _require_sd()
+        from ..dsp.trigger import SoundTrigger
+
+        audio, cap = cfg["audio"], cfg["capture"]
+        self.fs = int(audio["sample_rate"])
+        self.block = int(audio.get("block_size", 1024))
+        self.device = audio["device"] if device is None else device
+        self.gain = float(cap.get("input_gain", 1.0))
+        self.trigger = SoundTrigger(
+            self.fs, self.block, cap["pre_trigger_ms"], cap["capture_duration_s"], cap["cooldown_s"],
+            threshold=None if cap.get("auto_threshold", True) else cap["rms_threshold"],
+            floor_mult=cap.get("floor_mult", 6.0),
+        )
+        self._on_clip, self._on_level = on_clip, on_level
+        self._stream = None
+
+    def set_sensitivity(self, floor_mult: float) -> None:
+        self.trigger.floor_mult = float(floor_mult)
+
+    def _callback(self, indata, frames, time_info, status):
+        mono = indata[:, 0].astype(np.float64) * self.gain
+        clip = self.trigger.process_block(mono)
+        if self._on_level:
+            self._on_level(self.trigger.level, self.trigger.threshold, self.trigger.state)
+        if clip is not None:
+            self._on_clip(clip, self.fs)
+
+    def start(self):
+        self.trigger.reset()
+        self._stream = _sd.InputStream(samplerate=self.fs, blocksize=self.block, channels=1,
+                                       device=self.device, callback=self._callback)
+        self._stream.start()
+
+    def stop(self):
+        if self._stream is not None:
+            self._stream.stop()
+            self._stream.close()
+            self._stream = None
+
+    def record_seconds(self, seconds: float) -> np.ndarray:
+        """Block and return ``seconds`` of raw audio (the motor-only recording)."""
+        n = int(seconds * self.fs)
+        out = _sd.rec(n, samplerate=self.fs, channels=1, device=self.device, dtype="float64")
+        _sd.wait()
+        return out[:, 0] * self.gain

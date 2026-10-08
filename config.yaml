@@ -16,6 +16,9 @@ capture:
   pre_trigger_ms: 100     # audio retained from before the trigger fires
   capture_duration_s: 0.6 # total clip length recorded per event
   cooldown_s: 1.0         # ignore new triggers for this long after one fires
+  auto_threshold: true    # trigger at floor_mult x the tracked background level, so a running
+                          # motor raises the trigger with it; false -> use rms_threshold as-is
+  floor_mult: 6.0         # provisional - how far above the background a strike must be
 
 calibration:
   enabled: false
@@ -38,6 +41,25 @@ octave:
   f_min_hz: 25
   f_max_hz: 20000
   reference_pressure_pa: 2.0e-5 # 20 uPa, for dB SPL band levels
+
+machine:
+  # Removing the rig's own sound (collect screen). Motor hum -> spectral profile;
+  # striker firing with no tile -> averaged time-domain template, subtracted per
+  # strike. All provisional - no real rig recording has been made yet.
+  motor_strength: 1.0           # spectral-subtraction strength for the motor profile
+  template_pre_ms: 10           # template lead-in kept before the strike onset
+  template_ms: 150              # template length after the onset
+  fit_ms: 15                    # span used to align/scale the template (the click, not the ring)
+  max_shift_ms: 2.0             # alignment search range around the detected onset
+  max_scale: 2.0                # template amplitude is clamped to [0, this] x
+  onset_threshold_mult: 5.0     # strike = first sample above this x pre-roll RMS
+  min_dry_strikes: 5            # fewer usable dry strikes -> refuse to build a template
+  min_repeatability: 0.80       # below this the template is flagged unreliable
+  residual_skip_ms: 5           # ignore this long after the onset (click leftovers)
+  residual_window_ms: 250       # judge "is a tile ringing?" over this span
+  min_residual_snr_db: 10       # residual under this above the pre-roll floor -> no tile
+  dry_strikes_target: 15        # how many dry strikes the Collect screen asks for
+  motor_seconds: 5              # length of the motor-only recording
 
 weighting:
   default: Z                    # A | C | Z ; Z = flat, recommended for NDT
