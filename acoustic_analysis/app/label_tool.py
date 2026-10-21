@@ -17,15 +17,18 @@ from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
 from ..config import load_config, resolve_path
+from ..io import audio_out
 from ..io.label_store import LabelStore
-from ..io.session_reader import GROUP_TEXT, GROUPS, StrikeRecord, list_sessions, load_all, load_session
-from ..label_model import NO_CAMERA, ReviewData
-from .theme import ACCENT, BAD, FG, FG_DIM, FG_MUTE, INPUT, OK, PANEL, WARN, apply_theme, mono_font, ui_font
+from ..io.session_reader import GROUP_TEXT, GROUPS, StrikeRecord, load_all, load_session
+from ..label_model import ReviewData, load_wav
+from .plots import draw_strike_overview
+from .theme import ACCENT, FG, FG_DIM, FG_MUTE, OK, PANEL, WARN, apply_theme, mono_font, ui_font
+from .widgets import MplPanel
 
 _ALL = "all"
 _GROUP_CHOICES = [_ALL] + list(GROUPS)
 _STATUS_CHOICES = [_ALL, "unlabelled", "labelled"]
-_PIC_BOX = (520, 300)
+_PIC_BOX = (560, 250)
 
 
 def _short_session(name: str) -> str:
@@ -37,7 +40,7 @@ class LabelWindow(tk.Tk):
                  labels_path: str | Path | None = None):
         super().__init__()
         self.title("Tile labelling")
-        self.minsize(1240, 740)
+        self.minsize(1300, 720)
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
         self.geometry(f"{min(1480, sw - 24)}x{min(900, sh - 80)}+8+8")
         apply_theme(self)
@@ -98,10 +101,10 @@ class LabelWindow(tk.Tk):
         cols = ("group", "camera", "label")
         self.tree = ttk.Treeview(left, columns=cols, show="tree headings", height=24, selectmode="browse")
         self.tree.heading("#0", text="strike")
-        self.tree.column("#0", width=128)
-        for c, w, t in (("group", 92, "what"), ("camera", 78, "camera"), ("label", 92, "your label")):
+        self.tree.column("#0", width=112, stretch=False)
+        for c, w, t in (("group", 70, "what"), ("camera", 66, "camera"), ("label", 84, "your label")):
             self.tree.heading(c, text=t)
-            self.tree.column(c, width=w, anchor="center")
+            self.tree.column(c, width=w, anchor="center", stretch=False)
         for tag, colour in (("done", OK), ("none", FG)):
             self.tree.tag_configure(tag, foreground=colour)
         sb = ttk.Scrollbar(left, orient="vertical", command=self.tree.yview)
@@ -115,18 +118,22 @@ class LabelWindow(tk.Tk):
         self.centre.grid(row=0, column=1, sticky="nsew")
         self.centre.columnconfigure(0, weight=1)
         self.centre.rowconfigure(1, weight=1)
-        self.pic = tk.Label(self.centre, bg=PANEL, fg=FG_MUTE, text="", width=_PIC_BOX[0] // 8, height=_PIC_BOX[1] // 16,
-                            font=ui_font(10))
-        self.pic.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        self.plot_area = ttk.Frame(self.centre)        # the plots live here (added with the sound analysis)
-        self.plot_area.grid(row=1, column=0, sticky="nsew")
+        # A Label's width/height are text units until it shows an image, then pixels - so the box is a
+        # fixed-size Frame and the Label just fills it.
+        box = tk.Frame(self.centre, bg=PANEL, height=_PIC_BOX[1])
+        box.grid(row=0, column=0, sticky="ew", pady=(0, 8))
+        box.pack_propagate(False)
+        self.pic = tk.Label(box, bg=PANEL, fg=FG_MUTE, text="", font=ui_font(10))
+        self.pic.pack(fill="both", expand=True)
+        self.plot = MplPanel(self.centre, figsize=(5.0, 2.6))
+        self.plot.grid(row=1, column=0, sticky="nsew")
 
     def _build_info(self, body):
-        self.right = ttk.Frame(body, width=440)
+        self.right = ttk.Frame(body, width=400)
         self.right.grid(row=0, column=2, sticky="ns", padx=(10, 0))
         self.right.pack_propagate(False)
         self.flag_var = tk.StringVar(value="")
-        ttk.Label(self.right, textvariable=self.flag_var, wraplength=420, foreground=WARN,
+        ttk.Label(self.right, textvariable=self.flag_var, wraplength=390, foreground=WARN,
                   font=ui_font(10, "bold"), justify="left").pack(anchor="w", pady=(0, 6))
         wrap = ttk.Frame(self.right)
         wrap.pack(fill="both", expand=True)
@@ -140,8 +147,147 @@ class LabelWindow(tk.Tk):
         self.info.tag_configure("k", foreground=FG_DIM)
         self.info.tag_configure("v", foreground=FG, font=mono_font(10))
         self.info.configure(state="disabled")
-        self.controls = ttk.Frame(self.right)          # the label buttons live here (added with labelling)
+        self.controls = ttk.Frame(self.right)
         self.controls.pack(fill="x", pady=(8, 0))
+        self._build_controls()
+
+    # ------------------------------------------------------------------ labelling controls
+    def _build_controls(self):
+        c = self.controls
+        self.cur_label_var = tk.StringVar(value="")
+        self.cur_label = ttk.Label(c, textvariable=self.cur_label_var, font=ui_font(11, "bold"))
+        self.cur_label.pack(anchor="w")
+        ttk.Label(c, text="What is the TILE like? (look at it and listen)", style="Dim.TLabel").pack(anchor="w", pady=(4, 2))
+        grid = ttk.Frame(c)
+        grid.pack(fill="x")
+        self._label_keys: dict[str, str] = {}
+        used: set[str] = set()
+        for i, name in enumerate(self.labels.classes + self.labels.extra):
+            # first letter of each word (corner_broken -> c, then b), then any letter still free
+            cands = [w[0] for w in name.split("_") if w] + [ch for ch in name if ch.isalpha()]
+            key = next((ch for ch in cands if ch not in used), name[0])
+            used.add(key)
+            self._label_keys[key] = name
+            ttk.Button(grid, text=f"{name.replace('_', ' ')}  [{key.upper()}]",
+                       command=lambda n=name: self.set_label(n)).grid(row=i // 3, column=i % 3, sticky="ew", padx=2, pady=2)
+        for col in range(3):
+            grid.columnconfigure(col, weight=1, uniform="lab")
+        tiers = ttk.Frame(c)
+        tiers.pack(fill="x", pady=(4, 0))
+        ttk.Label(tiers, text="Look grade", style="Dim.TLabel").pack(side="left", padx=(0, 6))
+        self._tier_keys = {str(i + 1): g for i, g in enumerate(self.labels.grades)}
+        for key, g in self._tier_keys.items():
+            ttk.Button(tiers, text=f"{g} [{key}]", width=7, command=lambda t=g: self.set_tier(t)).pack(side="left", padx=2)
+        note = ttk.Frame(c)
+        note.pack(fill="x", pady=(6, 0))
+        ttk.Label(note, text="Note", style="Dim.TLabel").pack(side="left", padx=(0, 6))
+        self.note_var = tk.StringVar()
+        self._note_for: str | None = None
+        self.note_entry = ttk.Entry(note, textvariable=self.note_var)
+        self.note_entry.pack(side="left", fill="x", expand=True)
+        self.note_entry.bind("<Return>", lambda _e: self.save_note())
+        self.note_entry.bind("<FocusOut>", lambda _e: self.save_note())
+        acts = ttk.Frame(c)
+        acts.pack(fill="x", pady=(6, 0))
+        ttk.Button(acts, text="Play sound  [Space]", command=self.play).pack(side="left")
+        ttk.Button(acts, text="Clear label", command=self.clear_label).pack(side="left", padx=6)
+        ttk.Label(c, text="Keys: letters / digits label  -  Left, Right = previous / next",
+                  style="Dim.TLabel").pack(anchor="w", pady=(6, 0))
+        self.bind("<Key>", self._on_key)
+        self.bind("<Right>", lambda _e: self._step(1))
+        self.bind("<Left>", lambda _e: self._step(-1))
+
+    def _typing(self) -> bool:
+        return isinstance(self.focus_get(), (tk.Entry, ttk.Entry, ttk.Combobox))
+
+    def _on_key(self, e):
+        if self._typing():
+            return
+        ch = (e.char or "").lower()
+        if ch == " ":
+            self.play()
+        elif ch in self._label_keys:
+            self.set_label(self._label_keys[ch])
+        elif ch in self._tier_keys:
+            self.set_tier(self._tier_keys[ch])
+
+    def _step(self, delta: int) -> None:
+        if self._typing() or not self._visible:
+            return
+        i = self._visible.index(self._rec) if self._rec in self._visible else 0
+        j = min(max(i + delta, 0), len(self._visible) - 1)
+        self.tree.selection_set(self._visible[j].key)
+        self.tree.see(self._visible[j].key)
+
+    def _next_unlabelled(self, after: StrikeRecord) -> StrikeRecord | None:
+        if after not in self._visible:
+            return None
+        for r in self._visible[self._visible.index(after) + 1:]:
+            if self.labels.get(r.key) is None and r.clip_path is not None:
+                return r
+        return None
+
+    def set_label(self, name: str) -> None:
+        rec = self._rec
+        if rec is None:
+            return
+        self.save_note()
+        self.labels.set(rec.key, label=name)
+        self.status.set(f"{rec.id}: {name.replace('_', ' ')}")
+        self.refresh_list(keep=self._next_unlabelled(rec) or rec)       # on to the next one still to do
+
+    def set_tier(self, tier: str) -> None:
+        if self._rec is None:
+            return
+        self.save_note()
+        self.labels.set(self._rec.key, tier=tier)
+        self.status.set(f"{self._rec.id}: look grade {tier}")
+        self.refresh_list(keep=self._rec)
+
+    def clear_label(self) -> None:
+        if self._rec is None:
+            return
+        self.labels.clear(self._rec.key)
+        self.status.set(f"{self._rec.id}: label cleared")
+        self.refresh_list(keep=self._rec)
+
+    def save_note(self) -> None:
+        key = self._note_for
+        if key is None:
+            return
+        text = self.note_var.get().strip()
+        if text == ((self.labels.get(key) or {}).get("note") or ""):
+            return
+        self.labels.set(key, note=text)
+        rec = next((r for r in self.data.records if r.key == key), None)
+        if rec is not None and rec is self._rec:
+            self._show_controls(rec)
+
+    def play(self) -> None:
+        rec = self._rec
+        if rec is None or rec.clip_path is None:
+            return
+        if not audio_out.is_available():
+            self.status.set("No audio output available on this machine.")
+            return
+        x, fs = load_wav(rec.clip_path)
+        audio_out.play(x, fs)
+
+    def _show_controls(self, rec: StrikeRecord | None) -> None:
+        lab = self.labels.get(rec.key) if rec else None
+        if rec is None:
+            self.cur_label_var.set("")
+        elif lab and (lab.get("label") or lab.get("tier")):
+            bits = [(lab.get("label") or "no class yet").replace("_", " ")]
+            if lab.get("tier"):
+                bits.append(f"look grade {lab['tier']}")
+            self.cur_label_var.set("Your label:  " + "  -  ".join(bits))
+            self.cur_label.configure(foreground=OK)
+        else:
+            self.cur_label_var.set("Not labelled yet")
+            self.cur_label.configure(foreground=FG_DIM)
+        self._note_for = rec.key if rec else None
+        self.note_var.set((lab or {}).get("note") or "")
 
     # ------------------------------------------------------------------ loading
     def open_folder(self):
@@ -222,7 +368,22 @@ class LabelWindow(tk.Tk):
     # ------------------------------------------------------------------ detail
     def _show(self, rec: StrikeRecord | None) -> None:
         self._show_picture(rec)
+        self._show_plot(rec)
         self._show_info(rec)
+        self._show_controls(rec)
+
+    def _show_plot(self, rec: StrikeRecord | None) -> None:
+        if rec is None:
+            self.plot.clear()
+            return
+        cur = self.data.curves.get(rec.key, {})
+        try:
+            wave = self.data.waveform(rec)
+        except Exception:  # noqa: BLE001 - an unreadable clip shows an empty plot, not a crash
+            wave = None
+        draw_strike_overview(self.plot.figure, wave, cur.get("spec"), cur.get("env"), self.data.reference,
+                             title=f"{rec.session}  {rec.id}")
+        self.plot.canvas.draw_idle()
 
     def _show_picture(self, rec: StrikeRecord | None) -> None:
         self._photo = None

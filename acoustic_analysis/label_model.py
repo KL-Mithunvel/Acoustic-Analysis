@@ -17,7 +17,8 @@ import soundfile as sf
 
 from .io.label_store import LabelStore
 from .io.session_reader import GROUP_TEXT, StrikeRecord
-from .strike_features import FEATURE_KEYS, FEATURE_LABELS, flags as _flags, percentile_of, strike_features
+from .strike_features import (FEATURE_KEYS, FEATURE_LABELS, find_onset, flags as _flags, percentile_of, ring_envelope_db,
+                              ring_spectrum, strike_features)
 
 NO_CAMERA = "no camera result"
 
@@ -59,6 +60,8 @@ class ReviewData:
         self.labels = labels
         self.features: dict[str, dict] = {}
         self.medians: dict[str, dict[str, float]] = {}
+        self.curves: dict[str, dict] = {}            # per clip: "spec" (freq, share) and "env" (ms, dB)
+        self.reference: dict[str, dict] = {}         # per group: median / quartile curves to compare against
 
     # -- analysis -------------------------------------------------------------
     def compute_features(self, progress: Callable[[int, int], None] | None = None) -> None:
@@ -67,13 +70,52 @@ class ReviewData:
             try:
                 x, fs = load_wav(r.clip_path)
                 self.features[r.key] = strike_features(x, fs, self.cfg)
+                self.curves[r.key] = {"spec": ring_spectrum(x, fs, self.cfg), "env": ring_envelope_db(x, fs, self.cfg)}
             except Exception:  # noqa: BLE001 - an unreadable clip must not stop the rest
                 self.features[r.key] = {"onset_found": False, **{k: None for k in FEATURE_KEYS}, "error": True}
             if progress:
                 progress(i + 1, len(todo))
         self._build_medians()
 
+    def _stack(self, recs: list[StrikeRecord], kind: str):
+        """Curves of one kind for these records, as one array - only those that share their x axis."""
+        pairs = [self.curves[r.key][kind] for r in recs if self.curves.get(r.key, {}).get(kind) is not None]
+        if not pairs:
+            return None
+        n = min(len(p[0]) for p in pairs)
+        x = pairs[0][0][:n]
+        ys = np.array([p[1][:n] for p in pairs if len(p[0]) >= n and np.allclose(p[0][:n], x)])
+        return (x, ys) if len(ys) else None
+
+    def _build_reference(self) -> None:
+        self.reference = {}
+        for g in {r.group for r in self.records}:
+            recs = [r for r in self.records if r.group == g]
+            ref = {}
+            spec, env = self._stack(recs, "spec"), self._stack(recs, "env")
+            if spec:
+                f, p = spec
+                ref["spec"] = (f, np.median(p, 0), np.percentile(p, 25, 0), np.percentile(p, 75, 0))
+            if env:
+                t, d = env
+                ref["env"] = (t, np.median(d, 0), np.percentile(d, 25, 0), np.percentile(d, 75, 0))
+            if ref:
+                self.reference[g] = ref
+
+    def waveform(self, rec: StrikeRecord, pre_ms: float = 60.0, post_ms: float = 320.0):
+        """``(t_ms, samples, onset_ms)`` around the strike, t=0 at the onset; ``None`` without a clip/strike."""
+        if rec.clip_path is None:
+            return None
+        x, fs = load_wav(rec.clip_path)
+        x = x - np.median(x)
+        onset, _ = find_onset(x, fs, self.cfg)
+        if onset is None:
+            onset = int(float(self.cfg["strike"]["expect_s"]) * fs)       # show where it was expected
+        a, b = max(onset - int(pre_ms * fs / 1000), 0), min(onset + int(post_ms * fs / 1000), x.size)
+        return (np.arange(a, b) - onset) / fs * 1000.0, x[a:b], 0.0
+
     def _build_medians(self) -> None:
+        self._build_reference()
         self.medians = {}
         for g in {r.group for r in self.records}:
             feats = [self.features[r.key] for r in self.records
@@ -191,7 +233,7 @@ class ReviewData:
                 rows.append((FEATURE_LABELS[k][0],
                              f"{fmt_feature(k, feat[k])}   (typical {fmt_feature(k, med.get(k))}"
                              + (f", {p:.0f}th pct)" if p is not None else ")")))
-            out.append(Section("Sound analysis (this app)", rows))
+            out.insert(1, Section("Sound analysis (this app)", rows))       # the analysis comes first
         elif feat is not None:
-            out.append(Section("Sound analysis (this app)", [("Result", "no strike found in the clip")]))
+            out.insert(1, Section("Sound analysis (this app)", [("Result", "no strike found in the clip")]))
         return out

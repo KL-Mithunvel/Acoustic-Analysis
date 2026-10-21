@@ -90,7 +90,9 @@ def test_sections_carry_everything(data):
     assert "Sound analysis (this app)" in sec
     assert "th pct" in sec["Sound analysis (this app)"]["Spectral centroid (brightness)"]
     none = next(r for r in data.records if r.group == "no_tile")
-    assert dict(data.sections(none)[2].rows) == {"Camera": NO_CAMERA}
+    secs = data.sections(none)
+    assert secs[1].title == "Sound analysis (this app)"              # right after "This recording"
+    assert dict(next(x for x in secs if x.title.startswith("Camera")).rows) == {"Camera": NO_CAMERA}
 
 
 def test_unreadable_clip_is_recorded_not_raised(tmp_path):
@@ -106,3 +108,19 @@ def test_fmt_feature():
     assert fmt_feature("centroid_hz", 917.7) == "918 Hz"
     assert fmt_feature("slope_db_ms", -0.195) == "-0.20 dB/ms"
     assert fmt_feature("t20_ms", None) == "-"
+
+
+def test_reference_curves_and_waveform(data):
+    ref = data.reference
+    assert set(ref) >= {"tile", "no_tile"}
+    f, med, q1, q3 = ref["tile"]["spec"]
+    assert abs(f[int(np.argmax(med))] - 2000) < 100            # the tile group rings at 2 kHz
+    f2, med2, _, _ = ref["no_tile"]["spec"]
+    assert abs(f2[int(np.argmax(med2))] - 7000) < 150
+    assert (q1 <= q3 + 1e-12).all()
+    t, m, _, _ = ref["tile"]["env"]
+    assert m[0] > m[len(m) // 2]                               # fading
+    rec = next(r for r in data.records if r.group == "tile" and r.clip_path)
+    tw, x, on = data.waveform(rec)
+    assert tw[0] < 0 < tw[-1] and on == 0.0 and abs(x[np.searchsorted(tw, 0.0):][:50]).max() > 0.1
+    assert data.waveform(data.records[-1]) is None             # no clip

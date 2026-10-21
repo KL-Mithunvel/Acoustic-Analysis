@@ -226,3 +226,54 @@ def draw_take_detail(
     ax.set_xlabel("time (s)")
     ax.set_ylabel("amplitude")
     ax.set_title("Detail - drag to select a snippet")
+
+
+# -- labelling tool: one strike against the typical tile / striker-alone ------------------
+_TILE_C = "#4aa8ff"
+_NONE_C = "#e6b053"
+_THIS_C = "#ededf1"
+
+
+def draw_strike_overview(fig, wave, spec, env, reference: dict, title: str = "") -> None:
+    """Three panels on ``fig``: waveform around the strike, spectrum and fade against references.
+
+    ``wave`` = (t_ms, samples, onset_ms) or None; ``spec`` = (freq, share) or None; ``env`` = (t_ms, dB)
+    or None; ``reference`` = ``ReviewData.reference`` ({group: {"spec": (f, med, q1, q3), "env": ...}})."""
+    fig.clear()
+    ax_w, ax_s, ax_e = fig.subplots(1, 3)
+
+    if wave is not None:
+        t, x, on = wave
+        ax_w.plot(t, x, lw=0.6, color=_THIS_C)
+        ax_w.axvline(on, color="#e85d52", lw=1.0)
+        ax_w.set_xlabel("ms from the strike")
+    else:
+        ax_w.text(0.5, 0.5, "no clip", ha="center", va="center", transform=ax_w.transAxes)
+    ax_w.set_title("What it sounds like")
+    ax_w.set_ylabel("amplitude")
+
+    for kind, ax, ylabel, logy in (("spec", ax_s, "share of energy", True), ("env", ax_e, "level (dB)", False)):
+        for group, colour, name in (("no_tile", _NONE_C, "striker alone (typical)"), ("tile", _TILE_C, "tiles (typical)")):
+            ref = reference.get(group, {}).get(kind)
+            if ref is None:
+                continue
+            x, med, q1, q3 = ref
+            ax.fill_between(x, np.maximum(q1, 1e-12) if logy else q1, np.maximum(q3, 1e-12) if logy else q3,
+                            color=colour, alpha=0.18, lw=0)
+            ax.plot(x, np.maximum(med, 1e-12) if logy else med, color=colour, lw=1.1, label=name)
+        own = spec if kind == "spec" else env
+        if own is not None:
+            ax.plot(own[0], np.maximum(own[1], 1e-12) if logy else own[1], color=_THIS_C, lw=1.5, label="this strike")
+        if logy:
+            ax.set_yscale("log")
+        ax.set_ylabel(ylabel)
+    ax_s.set_title("Which pitches ring")
+    ax_s.set_xlabel("frequency (Hz)")
+    ax_s.set_xlim(100, 12000)
+    if ax_s.get_legend_handles_labels()[0]:
+        ax_s.legend(fontsize=7, loc="upper right")
+    ax_e.set_title("How fast it fades")
+    ax_e.set_xlabel("ms after the strike")
+    ax_e.set_ylim(-50, 3)
+    if title:
+        fig.suptitle(title, fontsize=9)

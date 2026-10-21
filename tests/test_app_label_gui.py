@@ -80,3 +80,71 @@ def test_striker_alone_has_no_picture_and_says_why(win):
     assert win._photo is None
     assert "no tile to photograph" in win.pic.cget("text")
     assert "no camera result" in win.info.get("1.0", "end")
+
+
+def _rec(win, rid):
+    return next(r for r in win.data.records if r.id == rid)
+
+
+def test_plot_draws_three_panels_for_the_selection(win):
+    _select(win, _rec(win, "S0001").key)
+    assert len(win.plot.figure.axes) == 3
+    assert [a.get_title() for a in win.plot.figure.axes] == ["What it sounds like", "Which pitches ring", "How fast it fades"]
+
+
+def test_labelling_saves_and_moves_to_the_next_unlabelled(win):
+    first = _rec(win, "S0001")
+    _select(win, first.key)
+    win.set_label("good")
+    win.update()
+    assert win.labels.get(first.key)["label"] == "good"
+    assert win._rec.id == "S0002"                                    # on to the next strike still to do
+    assert win.progress_var.get() == "1 of 4 labelled"
+    assert win.tree.item(first.key, "values")[2] == "good"
+    _select(win, first.key)
+    assert win.cur_label_var.get().startswith("Your label:  good")
+
+
+def test_tier_note_and_keyboard(win):
+    rec = _rec(win, "S0002")
+    _select(win, rec.key)
+    win.set_tier("3B")
+    win.note_var.set("hairline near the edge")
+    win.save_note()
+    got = win.labels.get(rec.key)
+    assert got["tier"] == "3B" and got["note"] == "hairline near the edge" and got["label"] is None
+
+    class Ev:                                                        # a key press for "c" = cracked
+        char = "c"
+    win.focus_set()
+    win._on_key(Ev())
+    win.update()
+    assert win.labels.get(rec.key)["label"] == "cracked"
+    assert win.labels.get(rec.key)["tier"] == "3B"                   # setting the class kept the tier and note
+
+
+def test_clear_and_unlabelled_filter(win):
+    rec = _rec(win, "S0002")
+    _select(win, rec.key)
+    win.clear_label()
+    win.update()
+    assert win.labels.get(rec.key) is None
+    win.f_status.var.set("unlabelled")
+    win.refresh_list()
+    assert rec.key in win.tree.get_children() and _rec(win, "S0001").key not in win.tree.get_children()
+    win.f_status.var.set("all")
+    win.refresh_list()
+
+
+def test_export_writes_only_labelled(win, tmp_path):
+    n = win.labels.export_csv(tmp_path / "out.csv", win.data.records, win.data.features)
+    import csv
+
+    rows = list(csv.DictReader(open(tmp_path / "out.csv", encoding="utf-8")))
+    assert n == len(rows) == 1 and rows[0]["id"] == "S0001" and rows[0]["label"] == "good"
+
+
+def test_shortcut_keys_are_the_obvious_letters(win):
+    assert win._label_keys == {"g": "good", "c": "cracked", "b": "corner_broken", "o": "other_defect",
+                               "r": "retest", "d": "discard"}
+    assert win._tier_keys == {"1": "3A", "2": "3B", "3": "4", "4": "5"}

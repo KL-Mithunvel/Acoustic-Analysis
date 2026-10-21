@@ -68,6 +68,30 @@ def ring_spectrum(x: np.ndarray, fs: int, cfg: dict) -> tuple[np.ndarray, np.nda
     return (f, p / total) if total > 0 else None
 
 
+def _envelope_db(x: np.ndarray, onset: int, fs: int, cfg: dict) -> tuple[np.ndarray, np.ndarray]:
+    """Smoothed envelope of the band-passed ring in dB, time in ms from the onset."""
+    c = cfg["strike"]
+    b_lo, b_hi = c["decay_band_hz"]
+    sos = butter(4, [b_lo, min(b_hi, 0.45 * fs)], "bandpass", fs=fs, output="sos")
+    env = np.abs(hilbert(sosfiltfilt(sos, x)[onset: onset + int(float(c["ring_ms"][1]) * fs / 1000)]))
+    k = max(int(float(c["smooth_ms"]) * fs / 1000), 1)
+    env = np.convolve(env, np.ones(k) / k, "same") + 1e-12
+    db = 20 * np.log10(env)
+    return np.arange(db.size) / fs * 1000, db
+
+
+def ring_envelope_db(x: np.ndarray, fs: int, cfg: dict) -> tuple[np.ndarray, np.ndarray] | None:
+    """(time_ms, level_db) of the fade after the strike, level re its own start; ``None`` if no strike."""
+    x = np.asarray(x, float) - np.median(x)
+    onset, _ = find_onset(x, fs, cfg)
+    if onset is None:
+        return None
+    t_ms, db = _envelope_db(x, onset, fs, cfg)
+    if db.size < 8:
+        return None
+    return t_ms, db - float(np.max(db[: max(int(0.01 * fs), 1)]))      # 0 dB = the loudest point in the first 10 ms
+
+
 def strike_features(x: np.ndarray, fs: int, cfg: dict) -> dict:
     """Flat feature dict. ``onset_found`` False means the rest are ``None`` (nothing struck)."""
     c = cfg["strike"]
@@ -100,13 +124,7 @@ def strike_features(x: np.ndarray, fs: int, cfg: dict) -> dict:
     out["f_top"] = float(p[f >= e3].sum() / total)
 
     # Envelope of the band-passed ring: fade speed (dB/ms line fit) and time to fall 20 dB.
-    b_lo, b_hi = c["decay_band_hz"]
-    sos = butter(4, [b_lo, min(b_hi, 0.45 * fs)], "bandpass", fs=fs, output="sos")
-    env = np.abs(hilbert(sosfiltfilt(sos, x)[onset: onset + int(float(c["ring_ms"][1]) * fs / 1000)]))
-    k = max(int(float(c["smooth_ms"]) * fs / 1000), 1)
-    env = np.convolve(env, np.ones(k) / k, "same") + 1e-12
-    db = 20 * np.log10(env)
-    t_ms = np.arange(db.size) / fs * 1000
+    t_ms, db = _envelope_db(x, onset, fs, cfg)
     f0, f1 = c["decay_fit_ms"]
     sel = (t_ms >= f0) & (t_ms <= f1)
     if sel.sum() >= 4:

@@ -7,7 +7,7 @@ import pytest
 
 from acoustic_analysis.config import load_config
 from acoustic_analysis.strike_features import (
-    find_onset, flags, percentile_of, ring_spectrum, strike_features,
+    find_onset, flags, percentile_of, ring_envelope_db, ring_spectrum, strike_features,
 )
 
 FS = 48000
@@ -95,3 +95,10 @@ def test_flags_tile_vs_no_tile(cfg):
     assert "alone" in flags(like_none, tile, none)[0]
     assert "No strike" in flags({"onset_found": False})[0]
     assert any("did not fade" in n for n in flags({**like_tile, "t20_ms": None}, tile, none))
+
+
+def test_ring_envelope_starts_at_zero_db_and_fades(cfg):
+    t, db = ring_envelope_db(_clip(1500, 0.03, noise=1e-5), FS, cfg)
+    assert db[:int(0.01 * FS)].max() == pytest.approx(0.0)
+    assert db[int(0.100 * FS)] < -20                          # 100 ms later it is far down
+    assert ring_envelope_db(np.random.default_rng(0).normal(0, 1e-3, int(1.5 * FS)), FS, cfg) is None
