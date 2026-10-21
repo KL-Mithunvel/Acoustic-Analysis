@@ -32,6 +32,7 @@ from .screens_collect import CollectScreen
 from .screens_home import HomeScreen
 from .screens_library import LibraryScreen
 from .screens_live import CalibrateScreen, MonitorScreen, RecordScreen, SettingsScreen
+from .screens_tester import TesterScreen
 from .screens_video import SliceScreen
 from .service import AnalysisService
 from .state import ClipData, SharedState
@@ -44,7 +45,7 @@ _POLL_MS = 200
 # The everyday workflow is the first group; everything else folds away under
 # ADVANCED (collapsed until clicked or navigated to). The app opens on Collect.
 _NAV_GROUPS: list[tuple[str, list]] = [
-    ("WORKFLOW", [CollectScreen, LibraryScreen, AnalyzeScreen, DatasetScreen]),
+    ("WORKFLOW", [CollectScreen, TesterScreen, LibraryScreen, AnalyzeScreen, DatasetScreen]),
     ("APP", [HomeScreen, SettingsScreen, LearnScreen]),
     ("ADVANCED", [SliceScreen, CompareScreen, FiltersScreen, NoiseScreen, CalibrateScreen,
                   MonitorScreen, RecordScreen, LabelScreen]),
