@@ -136,6 +136,16 @@ def strike_features(x: np.ndarray, fs: int, cfg: dict) -> dict:
     return out
 
 
+def zoom_window(x: np.ndarray, fs: int, cfg: dict, pre_ms: float = 60.0, post_ms: float = 320.0):
+    """``(t_ms, samples, 0.0)`` around the strike with t = 0 at the onset (where it was expected if none was found)."""
+    x = np.asarray(x, float) - np.median(x)
+    onset, _ = find_onset(x, fs, cfg)
+    if onset is None:
+        onset = int(float(cfg["strike"]["expect_s"]) * fs)
+    a, b = max(onset - int(pre_ms * fs / 1000), 0), min(onset + int(post_ms * fs / 1000), x.size)
+    return (np.arange(a, b) - onset) / fs * 1000.0, x[a:b], 0.0
+
+
 def percentile_of(value: float | None, population: list[float]) -> float | None:
     """Where ``value`` sits in ``population`` as 0-100 (None if either is missing)."""
     pop = [v for v in population if v is not None]

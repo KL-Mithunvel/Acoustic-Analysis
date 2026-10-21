@@ -17,8 +17,8 @@ import soundfile as sf
 
 from .io.label_store import LabelStore
 from .io.session_reader import GROUP_TEXT, StrikeRecord
-from .strike_features import (FEATURE_KEYS, FEATURE_LABELS, find_onset, flags as _flags, percentile_of, ring_envelope_db,
-                              ring_spectrum, strike_features)
+from .strike_features import (FEATURE_KEYS, FEATURE_LABELS, flags as _flags, percentile_of, ring_envelope_db,
+                              ring_spectrum, strike_features, zoom_window)
 from .strike_reference import StrikeReference, build_reference, evaluate, grade_strike
 
 NO_CAMERA = "no camera result"
@@ -109,12 +109,7 @@ class ReviewData:
         if rec.clip_path is None:
             return None
         x, fs = load_wav(rec.clip_path)
-        x = x - np.median(x)
-        onset, _ = find_onset(x, fs, self.cfg)
-        if onset is None:
-            onset = int(float(self.cfg["strike"]["expect_s"]) * fs)       # show where it was expected
-        a, b = max(onset - int(pre_ms * fs / 1000), 0), min(onset + int(post_ms * fs / 1000), x.size)
-        return (np.arange(a, b) - onset) / fs * 1000.0, x[a:b], 0.0
+        return zoom_window(x, fs, self.cfg, pre_ms, post_ms)
 
     def _build_medians(self) -> None:
         self._build_reference()

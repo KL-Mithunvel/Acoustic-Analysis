@@ -135,6 +135,7 @@ strike:
   # Features of a clip whose strike time is KNOWN (station sessions: the Nano's TAP puts
   # the strike about 0.5 s into a 1.5 s clip). Used by the labelling tool and Test Tile.
   # All provisional - tuned on 55 clips from one rig, no labels yet.
+  clip_s: 1.5              # length of the clip cut around a strike (Test Tile screen); the strike lands at expect_s
   expect_s: 0.5            # where in the clip the strike is expected
   lead_in_s: 0.35          # quiet stretch before the strike, used as the noise floor
   onset_mult: 8.0          # onset = first sample after lead_in above this x lead-in RMS
@@ -184,3 +185,4 @@ paths:
   sessions_dir: ../data/master/sessions   # station data-collection sessions (read-only; the labelling tool)
   labels_file: data/labels.json           # human labels for station strikes (never written into a session)
   strike_reference: data/strike_reference.json   # sound reference built from tiles labelled good
+  test_sessions_dir: data/sessions         # every strike the Test Tile screen hears, in the station's session layout
