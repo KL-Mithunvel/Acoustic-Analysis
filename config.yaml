@@ -152,3 +152,5 @@ paths:
   database: data/acoustic_analysis.sqlite
   exports_dir: data/exports
   reference_profile: data/reference_profile.json
+  sessions_dir: ../data/master/sessions   # station data-collection sessions (read-only; the labelling tool)
+  labels_file: data/labels.json           # human labels for station strikes (never written into a session)
