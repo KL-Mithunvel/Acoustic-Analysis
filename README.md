@@ -213,6 +213,41 @@ They are saved to `data/user_settings.yaml` and layered over `config.yaml`, whic
 **never rewritten** (so its explanatory comments stay). The full configuration is shown
 below as read-only text; edit `config.yaml` directly for anything not listed.
 
+### 8. Labelling recorded station strikes — a separate window
+
+```powershell
+python main.py label                   # the station sessions folder from config.yaml
+python main.py label D:\sessions       # a folder of sessions, or one session
+```
+
+![Labelling tool](docs/screenshots/08-label-tool.png)
+
+For recordings made by the tile-line station (a Pi or laptop that strikes tiles, records the
+microphone and the camera, and writes one folder per session). Pick any strike and see
+**everything known about it in one place**: the tile's picture; this app's sound analysis
+(pitch, brightness, how fast it fades, with where it sits among similar strikes); the camera's
+and the vision model's verdicts; the striker and distance sensor; and the station's decision.
+Three plots compare the strike with the typical tile and the typical striker-alone sound.
+
+Then label what the **tile** is like (good / cracked / corner broken / other defect / retest /
+discard, plus a look grade and a note). The tool jumps to the next strike still to do.
+
+- Labels go to `data/labels.json` (`paths.labels_file`). **Session folders are never
+  modified** — the station seals each one with a checksum manifest.
+- **Export labels (CSV)** writes one row per labelled strike with the labels, the camera's
+  reading and the sound features, ready for training.
+- Camera grades are shown as *information*, not as the answer: the camera's corner check is
+  not validated, so it can be wrong.
+- The sound analysis anchors on the known strike time (`strike:` in `config.yaml`, all
+  provisional), not on the generic impact detector.
+
+| Key | Does |
+|---|---|
+| G · C · B · O · R · D | good · cracked · corner broken · other defect · retest · discard |
+| 1 · 2 · 3 · 4 | look grade 3A · 3B · 4 · 5 |
+| Space | play the clip |
+| ← · → | previous / next strike |
+
 ### Shortcuts
 
 | Key | Where | Does |
@@ -293,6 +328,8 @@ must ring* on the first real session.
 - **Grade** — rule-based GOOD / BORDERLINE / DEFECTIVE / RETEST against a reference
   profile, with the reasons.
 - **Learn** — synthetic-signal bench and glossary; every chart has a **?** explainer.
+- **Labelling tool** — `python main.py label`: every recorded station strike with its tile
+  picture, camera / vision-model grade, sound analysis and label buttons in one window.
 - **Headless CLI** — `devices`, `analyze`, `noise`, `calibrate`, `export`.
 
 ## Project layout
@@ -307,15 +344,18 @@ acoustic_analysis/
     trigger (continuous sound trigger) · machine_noise (striker template + cleaning)
   features.py          conditioned_windows + extract_features -> one dict per clip
   segments.py          PURE snippet model for the Slice screen
+  strike_features.py   features of a clip with a KNOWN strike time (station clips)
+  label_model.py       PURE brain of the labelling tool (features, filters, info sections)
   classify/            reference.py (profile) + rules.py (grade)
-  io/                  recorder (+ SessionRecorder), audio_out, wavstore, dataset (SQLite),
+  io/                  session_reader (read-only station sessions), label_store (labels.json),
+                       recorder (+ SessionRecorder), audio_out, wavstore, dataset (SQLite),
                        library (safe file ops + undo), session (clean + auto-file),
                        machine_profile (.npz), videoaudio (ffmpeg), snippets
   app/                 Tkinter GUI: theme, state, service, plots, widgets,
                        screens_collect (Collect), screens_library (Library),
                        screens_home, screens (Analyze/Compare/Filters/Noise/Label/
                        Export/Learn), screens_live (Monitor/Record/Calibrate/Settings),
-                       screens_video (Slice)
+                       screens_video (Slice), label_tool (separate labelling window)
 tools/make_screenshots.py   regenerates docs/screenshots/ from the real app
 main.py                one-command launcher (bootstraps venv, then GUI or CLI)
 config.yaml            all tunable parameters (commented)
