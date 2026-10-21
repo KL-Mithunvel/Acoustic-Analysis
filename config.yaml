@@ -146,6 +146,26 @@ strike:
   t20_ref_ms: 5.0          # t20 = time for the envelope to fall 20 dB below its value here
   fraction_edges_hz: [1000, 3000, 6000]   # energy fractions: below / between / above these
 
+striker:
+  # The Arduino Nano that strikes the tile, on USB serial from this computer (striker/README.md).
+  arduino_cli: null              # path to arduino-cli; null = look on PATH, then C:\Program Files\Arduino CLI
+  sketch_dir: striker/nano_firmware
+  build_dir: data/build/nano
+  fqbn: "arduino:avr:nano:cpu=atmega328"        # new bootloader, uploads at 115200 (worked on the CH340 clone)
+  fqbn_alt: "arduino:avr:nano:cpu=atmega328old" # old bootloader, 57600: tried if the first says "not in sync"
+  core: "arduino:avr"
+  libraries: ["VL53L0X"]         # Pololu - the ToF sensor library the sketch #includes
+  usb_vids: ["1A86", "0403", "2341", "2A03", "10C4"]   # CH340, FTDI, Arduino, Arduino.org, CP210x
+  compile_timeout_s: 300
+  upload_timeout_s: 90
+  install_timeout_s: 900
+  # serial link (io/nano_link.py)
+  baud: 115200
+  ping_s: 0.5                    # keep-alive; the Nano's own watchdog stops the striker after 2 s of silence
+  stale_s: 3.0                   # no valid line from the Nano for this long = link down
+  hold_pct: 30                   # coil hold power while the striker is up (heat vs holding force)
+  tile_mm: 100                   # a ToF reading at or under this is a tile (the firmware's own limit)
+
 paths:
   data_dir: data
   recordings_dir: data/recordings
