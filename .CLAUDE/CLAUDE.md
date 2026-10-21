@@ -45,12 +45,29 @@ dataset for training a classifier.
   `data/user_settings.yaml` (never rewrites `config.yaml`, which would strip its
   comments). 237 tests. **All of it is verified on synthetic signals only - none of it
   has touched the real microphone or the real striker rig.**
+- **v0.4 (2026-10-22) - Nano striker, Test Tile and a labelling tool** (branch
+  `feature/striker-and-labelling`, plan `docs/PLAN_striker_labelling.md`, guide
+  `docs/STRIKER.md`, 360 tests). The laptop drives an Arduino Nano striker over USB serial and
+  records the microphone itself: `io/nano_flash.py` (`python main.py flash`, arduino-cli),
+  `io/nano_link.py` + `io/nano_protocol.py` (keep-alive, TAP / RET events, re-arm after a watchdog
+  reset), `io/audio_ring.py` (timestamped ring buffer: a 1.5 s clip is cut around each TAP),
+  `tile_test.py` (clip -> features -> verdict), `strike_reference.py` (grade = distance from tiles a
+  person labelled good; leave-one-out self-check), `io/strike_log.py` (every test saved in the tile-line
+  station's session layout), the **Test Tile** and **Label tiles** screens, and a separate **labelling
+  tool** window (`app/label_tool.py`, `label_model.py`, `io/session_reader.py`, `io/label_store.py`)
+  that shows every recorded strike with its picture, camera/vision verdicts and this app's analysis.
+  `striker/` holds the Nano firmware + protocol spec, **copied by hand** from the tile-line project
+  (still the source of truth). **Verified only against a scripted fake serial port, a fake mic ring
+  and real clips from the 2026-10-19 station sessions; the real Nano, ToF, solenoid and microphone
+  have not been run with this app, and the sound grade has never been built from real labels.**
 - **Entry points:**
   - `python main.py` — one-command launcher: bootstraps `./venv` + deps on first run,
     then the GUI (or forwards args to the CLI)
-  - `python -m acoustic_analysis` — GUI, opens on **Collect**. Sidebar: Collect / Library /
-    Analyze / Export; Home / Settings / Learn; ADVANCED (Slice / Compare / Filters /
-    Noise / Calibrate / Monitor / Record / Label)
+  - `python main.py label [folders]` — the labelling tool (default: the station's sessions +
+    `data/sessions`); `python main.py flash [--port COMx] [--compile-only] [--list-ports]`
+  - `python -m acoustic_analysis` — GUI, opens on **Test Tile**. Sidebar: Test Tile / Label tiles /
+    Collect / Library / Analyze / Export; Home / Settings / Learn; ADVANCED (Slice / Compare /
+    Filters / Noise / Calibrate / Monitor / Record / Label)
   - `python tools/make_screenshots.py` — regenerates `docs/screenshots/` (README images)
     from the real app on synthetic demo data (Windows, needs a visible desktop)
   - `python -m acoustic_analysis.cli devices | analyze | noise | calibrate | export`
@@ -115,6 +132,13 @@ acoustic_analysis/
                         (strike -> template -> motor spectral -> tile/no_tile/no_strike verdict)
     loudness.py         equal-loudness-contour phon/sone   [DEFERRED - not written]
   features.py           conditioned_windows (shared), extract_features -> flat dict + validity gate
+  strike_features.py    PURE - features of a clip whose strike time is known (find_onset after a quiet
+                        lead-in, ring spectrum shares, fade slope / t20, zoom_window); [strike] in config.yaml
+  strike_reference.py   PURE - build_reference (median + 1.4826 MAD of good tiles), grade_strike
+                        (GOOD / BORDERLINE / DEFECTIVE / RETEST / UNGRADED / NO TILE), evaluate (leave-one-out)
+  tile_test.py          PURE - analyse_strike: one clip -> features, verdict, curves for Test Tile
+  label_model.py        PURE - ReviewData: per-strike features + group reference curves, filters,
+                        "everything we know" sections, build_sound_reference
   segments.py           PURE - Segment / SnippetSet + add/remove/renumber/snap/summary
   classify/
     reference.py        ReferenceProfile.build / compare / save / load
@@ -122,6 +146,15 @@ acoustic_analysis/
   io/                   the only modules that touch mic / speakers / disk / db
     recorder.py         list_input_devices, LiveMonitor, Recorder (manual/rms trigger)  [hardware - smoke only]
     audio_out.py        peak-limited playback                                           [hardware - smoke only]
+    nano_protocol.py    PURE - checksummed Nano serial lines (copied from the tile-line project)
+    nano_link.py        NanoLink: feed()/tick() pure core (complete lines only, keep-alive, TAP/RET events,
+                        re-arm after WDOGRESET/HELLO) + a reader thread; pyserial imported lazily
+    nano_flash.py       Flasher: arduino-cli core/lib install, compile, upload (tries both bootloaders);
+                        injectable runner so the command sequences are tested without a board
+    audio_ring.py       RingBuffer (PURE, wall-clock stamped) + AudioRing (sounddevice)  [AudioRing: smoke only]
+    strike_log.py       StrikeLogger: Test Tile tests in the station's session layout
+    session_reader.py   READ-ONLY loader for station session folders (never writes: sessions are SHA-256 sealed)
+    label_store.py      labels.json - two axes (defect class + grade tier) + note, atomic writes, CSV export
     wavstore.py         save_clip / load_clip (float WAV + JSON sidecar)
     videoaudio.py       ffmpeg: extract_audio (cached), extract_frame_png, probe  [subprocess - smoke only]
     snippets.py         <video>.snippets.json sidecar - in-progress cuts, save/load
@@ -149,6 +182,12 @@ acoustic_analysis/
     screens_collect.py  Collect - Setup / Listen / Review. Audio callbacks only put items on a
                         queue; the Tk thread drains it (_pump, 50 ms). Owns no DSP.
     screens_library.py  Library - file manager UI over io/library.Library (drag-drop onto tree)
+    screens_tester.py   Test Tile - Connect / Strike / Result. Link, ring and port-list factories are
+                        class attributes so tests swap in fakes; hardware callbacks only queue.
+    screens_hub.py      Label tiles - the three-step explainer, label counts, opens the labelling tool
+    label_tool.py       a SEPARATE Tk window (python main.py label): list + filters, tile picture, plots,
+                        info panel, label buttons, Build sound reference. Opened from the app as a subprocess.
+striker/                Nano firmware (nano_firmware/ + nano_core.h) and PROTOCOL.md, copied by hand
 config.yaml             all tunable parameters
 tests/                  test_<module>.py, synthetic signals; test_app_gui_smoke.py +
                         test_app_slice_gui.py (skip w/o display); test_video_slicing.py
@@ -272,7 +311,12 @@ reference screenshot in `docs/` stays local). Audio datasets are never committed
   manually in Sound Control Panel → input device → Properties → Enhancements. They
   cannot be controlled from Python and make level and spectrum data untrustworthy until
   off. See `docs/METHODS.md` §8.
-- No GPIO / serial / I2C. The microphone is the only device dependency.
+- Device dependencies: the microphone, and (v0.4) the striker Arduino Nano on a USB serial port
+  (`pyserial`, port chosen in the Test Tile screen) plus `arduino-cli` for `python main.py flash`
+  (`winget install ArduinoSA.CLI`; a new terminal is needed to see it on PATH, the code also looks in
+  `C:\Program Files\Arduino CLI`). No GPIO / I2C on the laptop - those live on the Nano.
+- The Nano resets when its serial port opens (DTR), so the striker driver's inputs float for a moment:
+  keep clear of the striker while connecting or flashing.
 - `tkinter` ships with the python.org Windows installer; on a stripped Python it may
   need to be added.
 
@@ -320,7 +364,28 @@ reference screenshot in `docs/` stays local). Audio datasets are never committed
 - **Tk test flakiness:** creating many `tk.Tk()` roots in one pytest process intermittently
   raises `TclError` inside `tk.Tk()` (seen as a missing `init.tcl` / `tcl_findLibrary`).
   `test_app_collect_gui.py` therefore shares one module-scoped window; keep new GUI
-  tests on a shared window rather than one per test.
+  tests on a shared window rather than one per test. Seen again 2026-10-22: the first of four
+  full runs after adding `test_app_label_gui.py` / `test_app_tester_gui.py` errored in the Collect
+  GUI tests with this flake; the next three were clean (360 tests).
+- **Test Tile / striker have never run on the real rig (v0.4).** The Nano link, flash tool,
+  ring buffer and Test Tile screen are tested against a scripted fake serial port, a fake ring and
+  real clips from the 2026-10-19 station sessions. Unknown on real hardware: the upload (a compile
+  for AVR works: 17,308 B flash, 1,397 B RAM = 68 %, 651 B free), the VL53L0X + sprung solenoid
+  together, whether the clip really has the strike ~0.5 s in (`strike.expect_s`; the station clips ran
+  0.47-0.57 s; `AudioRing` stamps blocks with PortAudio's ADC time, never checked), the serial and
+  audio latencies, coil heating at `striker.hold_pct`. `striker/` is a hand copy of the tile-line
+  project's firmware (commit 00204ce): if that changes, copy again.
+- **The sound grade (`strike_reference.py`) has never been built from real labels.** It only says
+  "different from the good tiles" (median + 1.4826 x MAD per feature, worst robust z-score decides);
+  it cannot tell a crack from a chip, and `strike.reference.*` (z_ok 3, z_bad 6, the feature list,
+  min_good 8) are guesses. `evaluate()` reports leave-one-out numbers - small label sets give rough
+  ones. The camera's own grade is shown in the labelling tool as information only: 13 of 22 real tile
+  strikes were "Reject" with corner fill 0.89-0.97, which looks like false rejects.
+- **The first six tile strikes of `2026-10-19_18-44-39` look different from the rest** (higher
+  centroid, no 20 dB fade in 250 ms); cause unknown. `features.extract_features`'s `detect_impact`
+  put the impact 0.3 s before the real strike on a station tile clip; `strike_features` avoids it by
+  anchoring after a quiet lead-in (`strike.lead_in_s`) - a clip with noise in that lead-in would
+  fool it too.
 - `Library` renames/moves only keep the database in step when done through it; moving
   files in Explorer leaves `clips.path` pointing at the old location.
 - `dsp/loudness.py` (equal-loudness-contour phon/sone) — deferred, not written.
