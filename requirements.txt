@@ -11,3 +11,4 @@ matplotlib>=3.9,<4
 imageio-ffmpeg>=0.5,<1
 PyYAML>=6.0,<7
 pytest>=8.0,<9
+pyserial>=3.5,<4
