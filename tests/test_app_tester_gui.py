@@ -199,3 +199,38 @@ def test_the_saved_tests_open_in_the_labelling_tool(env):
     recs = load_all(env["tmp"] / "sessions")
     assert len(recs) >= 3 and {r.group for r in recs} >= {"tile", "no_tile"}
     assert all(r.clip_path and r.clip_path.is_file() for r in recs)
+
+
+def test_sidebar_order_and_the_hub_screen(env):
+    w = env["win"]
+    titles = [s.title for s in w.screens]
+    assert titles[:3] == ["Test Tile", "Label tiles", "Collect"]
+    hub = next(s for s in w.screens if s.title == "Label tiles")
+    w._goto("Label tiles")
+    hub.refresh()
+    assert "No tiles labelled yet" in hub.labelled.cget("text")
+    assert "not built yet" in hub.reference.cget("text") or "built from" in hub.reference.cget("text")
+    launched = []
+    import acoustic_analysis.app.screens_hub as hubmod
+    orig = hubmod.label_launch
+    hubmod.label_launch = lambda *a, **k: launched.append(1)
+    try:
+        hub.open_tool()
+    finally:
+        hubmod.label_launch = orig
+    assert launched == [1] and "Opening the labelling tool" in hub.status.get()
+    w._goto("Test Tile")
+
+
+def test_a_port_that_does_not_look_like_a_nano_is_not_preselected(env, monkeypatch):
+    s = env["screen"]
+    monkeypatch.setattr(type(s), "ports_fn", staticmethod(lambda c: [
+        {"device": "COM4", "description": "Standard Serial over Bluetooth link", "vid": None, "candidate": False}]))
+    s.port.set("")
+    s._refresh_ports()
+    assert s.port.get() == "" and "No Nano found" in s.status.get()
+    monkeypatch.setattr(type(s), "ports_fn", staticmethod(lambda c: [
+        {"device": "COM4", "description": "Bluetooth", "vid": None, "candidate": False},
+        {"device": "COM9", "description": "CH340", "vid": "1A86", "candidate": True}]))
+    s._refresh_ports()
+    assert s.port.get().startswith("COM9")

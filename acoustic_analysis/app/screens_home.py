@@ -31,7 +31,7 @@ class HomeScreen(_Base):
         ttk.Label(header, text="Acoustic-Analysis", font=ui_font(17, "bold")).pack(anchor="w")
         ttk.Label(
             header,
-            text="Impact-acoustic workbench - record or import taps, analyse, label, export a dataset.",
+            text="Strike a tile, hear how it rings, label what you find - and the app learns which tiles are good.",
             style="Dim.TLabel",
         ).pack(anchor="w", pady=(2, 0))
 
@@ -46,8 +46,12 @@ class HomeScreen(_Base):
 
         actions = ttk.Labelframe(self, text="Quick actions", padding=10)
         actions.pack(fill="x", pady=(14, 0))
-        ttk.Button(actions, text="Collect taps", style="Accent.TButton",
-                   command=lambda: ctx.navigate("Collect")).pack(side="left")
+        ttk.Button(actions, text="Test a tile", style="Accent.TButton",
+                   command=lambda: ctx.navigate("Test Tile")).pack(side="left")
+        ttk.Button(actions, text="Label tiles",
+                   command=lambda: ctx.navigate("Label tiles")).pack(side="left", padx=(8, 0))
+        ttk.Button(actions, text="Collect taps",
+                   command=lambda: ctx.navigate("Collect")).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Open WAV files   Ctrl+O",
                    command=lambda: ctx.open_files()).pack(side="left", padx=(8, 0))
         ttk.Button(actions, text="Analyze clips",

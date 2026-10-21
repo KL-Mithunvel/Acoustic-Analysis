@@ -37,7 +37,7 @@ def _short_session(name: str) -> str:
 
 
 class LabelWindow(tk.Tk):
-    def __init__(self, cfg: dict | None = None, sessions_dir: str | Path | None = None,
+    def __init__(self, cfg: dict | None = None, sessions_dir: str | Path | list | None = None,
                  labels_path: str | Path | None = None):
         super().__init__()
         self.title("Tile labelling")
@@ -69,7 +69,7 @@ class LabelWindow(tk.Tk):
 
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self.after(100, self._pump)
-        self.load(sessions_dir or resolve_path(self.cfg, "sessions_dir"))
+        self.load(sessions_dir if sessions_dir else default_folders(self.cfg))
 
     # ------------------------------------------------------------------ layout
     def _build_top(self):
@@ -299,9 +299,13 @@ class LabelWindow(tk.Tk):
         if folder:
             self.load(folder)
 
-    def load(self, folder: str | Path) -> None:
-        folder = Path(folder)
-        recs = load_session(folder) if (folder / "strikes.json").is_file() else load_all(folder)
+    def load(self, folders) -> None:
+        """Load one folder or a list of them; each is a folder of sessions or a single session."""
+        folders = [Path(f) for f in ([folders] if isinstance(folders, (str, Path)) else folders)]
+        recs: list[StrikeRecord] = []
+        for folder in folders:
+            recs += load_session(folder) if (folder / "strikes.json").is_file() else load_all(folder)
+        folder = ", ".join(str(f) for f in folders)
         self._generation += 1
         gen = self._generation
         self.data = ReviewData(recs, self.cfg, self.labels)
@@ -456,13 +460,38 @@ class LabelWindow(tk.Tk):
         self.status.set(f"Exported {n} labelled strikes to {path}")
 
 
+def launch(folders: list | None = None):
+    """Open the labelling tool in its own window (a separate process, so it never blocks this app)."""
+    import subprocess
+    import sys
+
+    from ..config import repo_root
+
+    return subprocess.Popen([sys.executable, str(repo_root() / "main.py"), "label", *[str(f) for f in (folders or [])]],
+                            cwd=str(repo_root()))
+
+
+def default_folders(cfg: dict) -> list[Path]:
+    """The station's sessions and your own Test Tile sessions - whichever exist."""
+    out = []
+    for key in ("sessions_dir", "test_sessions_dir"):
+        try:
+            p = resolve_path(cfg, key).resolve()
+        except KeyError:
+            continue
+        if p.is_dir():
+            out.append(p)
+    return out or [resolve_path(cfg, "sessions_dir")]
+
+
 def run(argv: list[str] | None = None) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(prog="label", description="Look at and label recorded tile strikes.")
-    ap.add_argument("sessions", nargs="?", help="a sessions folder, or one session folder (default: config paths.sessions_dir)")
+    ap.add_argument("sessions", nargs="*", help="sessions folders, or single session folders "
+                    "(default: the station's sessions and your Test Tile sessions)")
     args = ap.parse_args(argv)
-    LabelWindow(sessions_dir=args.sessions).mainloop()
+    LabelWindow(sessions_dir=args.sessions or None).mainloop()
     return 0
 
 

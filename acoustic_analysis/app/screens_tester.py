@@ -13,8 +13,6 @@ class attributes so tests can swap in fakes.
 from __future__ import annotations
 
 import queue
-import subprocess
-import sys
 import threading
 import time
 import tkinter as tk
@@ -23,7 +21,7 @@ from tkinter import filedialog, ttk
 
 import numpy as np
 
-from ..config import repo_root, resolve_path
+from ..config import resolve_path
 from ..io.audio_ring import AudioRing
 from ..io.nano_flash import FlashError, Flasher
 from ..io.nano_link import NanoLink, serial_ports
@@ -31,6 +29,7 @@ from ..io.strike_log import StrikeLogger
 from ..label_model import load_wav
 from ..strike_reference import ReferenceError as RefError, StrikeReference
 from ..tile_test import analyse_strike, is_graded_source
+from .label_tool import launch as label_launch
 from .plots import draw_strike_overview
 from .screens import _Base
 from .screens_live import _devices
@@ -202,13 +201,21 @@ class TesterScreen(_Base):
             self.status.set(f"Could not list serial ports: {exc}")
         self._ports = ports
         self.port["values"] = [f"{p['device']}  {p['description']}".strip() for p in ports]
-        if ports and not self.port.get():
-            self.port.current(next((i for i, p in enumerate(ports) if p["candidate"]), 0))
+        if not self.port.get():
+            # Only pre-select something that looks like a Nano: a Bluetooth port picked for you is a trap.
+            pick = next((i for i, p in enumerate(ports) if p["candidate"]), None)
+            if pick is not None:
+                self.port.current(pick)
+            else:
+                self.status.set("No Nano found - plug it in and press the refresh button (↻).")
         devs = _devices()
         self.mic["values"] = [f"{d['index']}: {d['name']}" for d in devs] if devs else ["(no microphone available)"]
         if not self.mic.get():
             want = self.cfg["audio"].get("device")
-            idx = next((i for i, d in enumerate(devs or []) if d["index"] == want), 0)
+            devs = devs or []
+            idx = next((i for i, d in enumerate(devs) if d["index"] == want), None)
+            if idx is None:                                # no device configured: prefer a USB microphone
+                idx = next((i for i, d in enumerate(devs) if "usb" in d["name"].lower()), 0)
             self.mic.current(idx)
 
     def _port_device(self) -> str | None:
@@ -448,9 +455,8 @@ class TesterScreen(_Base):
         self.process_clip(x, fs, {"src": "file", "tile_present": None, "t": time.time()})
 
     def _open_labelling(self):
-        folders = [str(self._path("test_sessions_dir", "sessions"))]
         try:
-            subprocess.Popen([sys.executable, str(repo_root() / "main.py"), "label", *folders], cwd=str(repo_root()))
+            label_launch()
             self.status.set("Opening the labelling tool in its own window...")
         except OSError as exc:
             self.status.set(f"Could not start the labelling tool: {exc}")

@@ -30,6 +30,7 @@ from .screens import (
 from ..io.library import Library
 from .screens_collect import CollectScreen
 from .screens_home import HomeScreen
+from .screens_hub import LabelHubScreen
 from .screens_library import LibraryScreen
 from .screens_live import CalibrateScreen, MonitorScreen, RecordScreen, SettingsScreen
 from .screens_tester import TesterScreen
@@ -43,9 +44,9 @@ _POLL_MS = 200
 
 # Sidebar groups, top to bottom.
 # The everyday workflow is the first group; everything else folds away under
-# ADVANCED (collapsed until clicked or navigated to). The app opens on Collect.
+# ADVANCED (collapsed until clicked or navigated to). The app opens on Test Tile.
 _NAV_GROUPS: list[tuple[str, list]] = [
-    ("WORKFLOW", [CollectScreen, TesterScreen, LibraryScreen, AnalyzeScreen, DatasetScreen]),
+    ("WORKFLOW", [TesterScreen, LabelHubScreen, CollectScreen, LibraryScreen, AnalyzeScreen, DatasetScreen]),
     ("APP", [HomeScreen, SettingsScreen, LearnScreen]),
     ("ADVANCED", [SliceScreen, CompareScreen, FiltersScreen, NoiseScreen, CalibrateScreen,
                   MonitorScreen, RecordScreen, LabelScreen]),
