@@ -131,6 +131,21 @@ video:
     post_ms: 700.0           # ring + decay kept after the strike
     guard_ms: 20.0           # stop a window this far short of the next strike
 
+strike:
+  # Features of a clip whose strike time is KNOWN (station sessions: the Nano's TAP puts
+  # the strike about 0.5 s into a 1.5 s clip). Used by the labelling tool and Test Tile.
+  # All provisional - tuned on 55 clips from one rig, no labels yet.
+  expect_s: 0.5            # where in the clip the strike is expected
+  lead_in_s: 0.35          # quiet stretch before the strike, used as the noise floor
+  onset_mult: 8.0          # onset = first sample after lead_in above this x lead-in RMS
+  ring_ms: [5, 250]        # window after the onset that is analysed (skips the click)
+  band_hz: [100, 12000]    # band for the spectral summary
+  decay_band_hz: [300, 12000]
+  decay_fit_ms: [3, 120]   # span of the envelope line fit
+  smooth_ms: 2.0           # envelope smoothing
+  t20_ref_ms: 5.0          # t20 = time for the envelope to fall 20 dB below its value here
+  fraction_edges_hz: [1000, 3000, 6000]   # energy fractions: below / between / above these
+
 paths:
   data_dir: data
   recordings_dir: data/recordings
