@@ -145,6 +145,15 @@ strike:
   smooth_ms: 2.0           # envelope smoothing
   t20_ref_ms: 5.0          # t20 = time for the envelope to fall 20 dB below its value here
   fraction_edges_hz: [1000, 3000, 6000]   # energy fractions: below / between / above these
+  # Sound grade of a tile = how far its strike features sit from tiles YOU labelled good
+  # (labelling tool -> "Build sound reference"). Provisional until checked on real labels.
+  reference:
+    features: [centroid_hz, f_low, f_mid, f_high, f_top, slope_db_ms]
+    min_good: 8              # fewer labelled-good tiles than this -> UNGRADED
+    z_ok: 3.0                # robust z (distances in "typical spreads") up to here = GOOD
+    z_bad: 6.0               # beyond this = DEFECTIVE; in between = BORDERLINE
+    min_sigma_frac: 0.05     # a feature's spread is never taken as less than this x |median|
+    min_snr_db: 20           # a weaker strike is RETEST, not graded
 
 striker:
   # The Arduino Nano that strikes the tile, on USB serial from this computer (striker/README.md).
@@ -174,3 +183,4 @@ paths:
   reference_profile: data/reference_profile.json
   sessions_dir: ../data/master/sessions   # station data-collection sessions (read-only; the labelling tool)
   labels_file: data/labels.json           # human labels for station strikes (never written into a session)
+  strike_reference: data/strike_reference.json   # sound reference built from tiles labelled good

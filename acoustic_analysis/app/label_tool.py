@@ -21,6 +21,7 @@ from ..io import audio_out
 from ..io.label_store import LabelStore
 from ..io.session_reader import GROUP_TEXT, GROUPS, StrikeRecord, load_all, load_session
 from ..label_model import ReviewData, load_wav
+from ..strike_reference import ReferenceError as RefError, StrikeReference, describe_evaluation
 from .plots import draw_strike_overview
 from .theme import ACCENT, FG, FG_DIM, FG_MUTE, OK, PANEL, WARN, apply_theme, mono_font, ui_font
 from .widgets import MplPanel
@@ -53,6 +54,7 @@ class LabelWindow(tk.Tk):
         self._visible: list[StrikeRecord] = []
         self._photo = None
         self._generation = 0                       # a newer load makes an older worker's result stale
+        self.dialog = messagebox.showinfo          # replaceable, so tests need not click through a modal box
 
         self._build_top()
         body = ttk.Frame(self)
@@ -77,6 +79,8 @@ class LabelWindow(tk.Tk):
         self.progress_var = tk.StringVar(value="")
         ttk.Label(bar, textvariable=self.progress_var, foreground=ACCENT, font=ui_font(11, "bold")).pack(side="left", padx=18)
         ttk.Button(bar, text="Export labels (CSV)…", command=self.export).pack(side="right")
+        ttk.Button(bar, text="Build sound reference", style="Accent.TButton",
+                   command=self.build_reference).pack(side="right", padx=8)
         ttk.Button(bar, text="Open sessions folder…", command=self.open_folder).pack(side="right", padx=8)
 
         flt = ttk.Frame(self, padding=(12, 0, 12, 8))
@@ -301,6 +305,12 @@ class LabelWindow(tk.Tk):
         self._generation += 1
         gen = self._generation
         self.data = ReviewData(recs, self.cfg, self.labels)
+        try:
+            ref_path = resolve_path(self.cfg, "strike_reference")
+            if ref_path.is_file():
+                self.data.sound_reference = StrikeReference.load(ref_path)
+        except (RefError, KeyError):
+            pass                                  # a missing or unreadable reference just means "ungraded"
         self.f_camera.configure(values=[_ALL] + self.data.camera_grades())
         self.f_session.configure(values=[_ALL] + sorted({r.session for r in recs}))
         for cb in (self.f_group, self.f_camera, self.f_status, self.f_session):
@@ -418,6 +428,20 @@ class LabelWindow(tk.Tk):
                     self.info.insert("end", f"{k}: ", "k")
                     self.info.insert("end", v + "\n", "v")
         self.info.configure(state="disabled")
+
+    # ------------------------------------------------------------------ sound reference
+    def build_reference(self):
+        """Build the sound grade's reference from the tiles labelled good, save it, and say how it does."""
+        try:
+            ref, ev = self.data.build_sound_reference()
+        except RefError as exc:
+            self.dialog("Sound reference", f"Not enough labelled tiles yet.\n\n{exc}\n\n"
+                        "Label tiles 'good' (press G) - the tool then builds a reference from them.")
+            return
+        ref.save(resolve_path(self.cfg, "strike_reference"))
+        self.status.set(f"Sound reference built from {ref.n_good} good tiles.")
+        self.dialog("Sound reference", describe_evaluation(ref, ev))
+        self._show(self._rec)
 
     # ------------------------------------------------------------------ export
     def export(self):

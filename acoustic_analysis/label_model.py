@@ -19,6 +19,7 @@ from .io.label_store import LabelStore
 from .io.session_reader import GROUP_TEXT, StrikeRecord
 from .strike_features import (FEATURE_KEYS, FEATURE_LABELS, find_onset, flags as _flags, percentile_of, ring_envelope_db,
                               ring_spectrum, strike_features)
+from .strike_reference import StrikeReference, build_reference, evaluate, grade_strike
 
 NO_CAMERA = "no camera result"
 
@@ -62,6 +63,7 @@ class ReviewData:
         self.medians: dict[str, dict[str, float]] = {}
         self.curves: dict[str, dict] = {}            # per clip: "spec" (freq, share) and "env" (ms, dB)
         self.reference: dict[str, dict] = {}         # per group: median / quartile curves to compare against
+        self.sound_reference: StrikeReference | None = None   # the good-tile reference the sound grade uses
 
     # -- analysis -------------------------------------------------------------
     def compute_features(self, progress: Callable[[int, int], None] | None = None) -> None:
@@ -123,6 +125,31 @@ class ReviewData:
             if feats:
                 self.medians[g] = {k: float(np.median([f[k] for f in feats if f[k] is not None]))
                                    for k in FEATURE_KEYS if any(f[k] is not None for f in feats)}
+
+    # -- the sound reference built from the labels --------------------------------
+    def labelled_items(self) -> list[tuple[str, dict, str]]:
+        """(key, features, class label) for every tile strike the person has labelled with a class."""
+        out = []
+        for r in self.records:
+            lab = (self.labels.get(r.key) if self.labels is not None else None) or {}
+            f = self.features.get(r.key)
+            if r.group == "tile" and lab.get("label") and f is not None:
+                out.append((r.key, f, lab["label"]))
+        return out
+
+    def build_sound_reference(self) -> tuple[StrikeReference, dict]:
+        """Reference from tiles labelled good, plus how it does on all the labels (leave-one-out for the good ones).
+        Raises ``strike_reference.ReferenceError`` when there are too few."""
+        items = self.labelled_items()
+        ref = build_reference([f for _, f, lab in items if lab == "good"], self.cfg)
+        self.sound_reference = ref
+        return ref, evaluate(items, self.cfg)
+
+    def sound_grade(self, rec: StrikeRecord) -> dict | None:
+        f = self.features.get(rec.key)
+        if f is None:
+            return None
+        return grade_strike(f, self.sound_reference, self.cfg, rec.tile_present if rec.group == "tile" else None)
 
     def feature_of(self, rec: StrikeRecord) -> dict | None:
         return self.features.get(rec.key)
@@ -234,6 +261,13 @@ class ReviewData:
                              f"{fmt_feature(k, feat[k])}   (typical {fmt_feature(k, med.get(k))}"
                              + (f", {p:.0f}th pct)" if p is not None else ")")))
             out.insert(1, Section("Sound analysis (this app)", rows))       # the analysis comes first
+            if rec.group == "tile":
+                g = self.sound_grade(rec)
+                lab = (self.labels.get(rec.key) if self.labels is not None else None) or {}
+                rows = [("Sound grade", g["grade"]), ("Why", " ".join(g["reasons"]))]
+                if lab.get("label") == "good" and self.sound_reference is not None:
+                    rows.append(("Note", "this tile is one of the good ones the reference was built from"))
+                out.insert(2, Section("Sound grade (vs your good tiles)", rows))
         elif feat is not None:
             out.insert(1, Section("Sound analysis (this app)", [("Result", "no strike found in the clip")]))
         return out

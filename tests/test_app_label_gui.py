@@ -33,7 +33,12 @@ def win(tmp_path_factory):
     root = tmp_path_factory.mktemp("sessions")
     s = _session(root)
     Image.new("RGB", (640, 480), (190, 120, 80)).save(s / "tiles" / "T1.jpg")   # a real, if plain, picture
-    w = LabelWindow(load_config(), sessions_dir=root, labels_path=tmp_path_factory.mktemp("lab") / "labels.json")
+    cfg = load_config()
+    lab = tmp_path_factory.mktemp("lab")
+    cfg["paths"] = {**cfg["paths"], "strike_reference": str(lab / "strike_reference.json")}      # never touch the real data/
+    w = LabelWindow(cfg, sessions_dir=root, labels_path=lab / "labels.json")
+    w.dialog = lambda title, text: w.shown.append((title, text))
+    w.shown = []
     _wait_ready(w)
     try:
         yield w
@@ -148,3 +153,61 @@ def test_shortcut_keys_are_the_obvious_letters(win):
     assert win._label_keys == {"g": "good", "c": "cracked", "b": "corner_broken", "o": "other_defect",
                                "r": "retest", "d": "discard"}
     assert win._tier_keys == {"1": "3A", "2": "3B", "3": "4", "4": "5"}
+
+
+def _synthetic_session(root, n_good=10, n_bad=2):
+    """A session whose good tiles ring at 2 kHz (fast fade) and whose defects ring at 5 kHz (slow fade)."""
+    import json
+
+    import numpy as np
+    import soundfile as sf
+
+    fs = 48000
+    s = root / "2026-10-20_09-00-00"
+    (s / "clips").mkdir(parents=True)
+    events = []
+    rng = np.random.default_rng(11)
+    for i in range(n_good + n_bad):
+        good = i < n_good
+        t = np.arange(int(1.5 * fs)) / fs
+        x = rng.normal(0, 1e-3, t.size)
+        m = t >= 0.5
+        f0 = (2000 + rng.normal(0, 30)) if good else 5000
+        x[m] += 0.6 * np.sin(2 * np.pi * f0 * (t[m] - 0.5)) * np.exp(-(t[m] - 0.5) / (0.02 if good else 0.08))
+        sid = f"S{i + 1:04d}"
+        sf.write(s / "clips" / f"{sid}_strike.wav", x.astype("float32"), fs)
+        events.append({"id": sid, "kind": "strike", "source": "tof", "t": 1.0 + i, "tile_present": True, "tof_mm": 88,
+                       "tile_id": f"T{i}", "labels": {"condition": "tile"}})
+    (s / "strikes.json").write_text(json.dumps(events))
+    (s / "manifest.json").write_text(json.dumps({"run_type": "tile", "note": "synthetic"}))
+    return root
+
+
+def test_building_the_sound_reference_needs_enough_good_tiles(win):
+    win.shown.clear()
+    win.build_reference()
+    title, text = win.shown[-1]
+    assert title == "Sound reference" and "Not enough labelled tiles" in text
+
+
+def test_building_the_reference_grades_tiles_by_sound(win, tmp_path):
+    import os
+
+    root = _synthetic_session(tmp_path)
+    win.load(root)
+    _wait_ready(win)
+    recs = win.data.records
+    for r in recs[:10]:
+        win.labels.set(r.key, label="good")
+    for r in recs[10:]:
+        win.labels.set(r.key, label="cracked")
+    win.shown.clear()
+    win.build_reference()
+    text = win.shown[-1][1]
+    assert "built from 10 tiles" in text and "Defective tiles caught: 2 of 2" in text
+    assert os.path.isfile(win.cfg["paths"]["strike_reference"])
+    _select(win, recs[10].key)                                       # a 5 kHz tile
+    info = win.info.get("1.0", "end")
+    assert "Sound grade (vs your good tiles)" in info and "Sound grade: DEFECTIVE" in info
+    _select(win, recs[3].key)                                        # a 2 kHz tile
+    assert "Sound grade: GOOD" in win.info.get("1.0", "end")
