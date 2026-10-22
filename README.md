@@ -10,12 +10,15 @@ impact and reading its ringing response to tell a sound part from a cracked one.
 first use case is clay/ceramic roofing tiles, but nothing in the analysis is
 tile-specific.
 
-> **Status: v0.3, working end to end on synthetic and generated data.** New in v0.3: a
-> guided **Collect** screen (sound-triggered capture + machine-noise removal), a
-> **Library** file manager, a simplified sidebar and plain-language **Basic settings**.
-> 237 tests pass. **Not yet done:** it has never run against a real microphone or the
-> real striker rig, no pistonphone calibration, every threshold in `config.yaml` is
-> provisional until tuned on real tiles. See [`TODO.md`](TODO.md).
+> **Status: v0.4, working end to end on synthetic data and on recorded station clips.** New in
+> v0.4: a **Test Tile** screen (strike a tile with an Arduino Nano over USB, record it, analyse it,
+> and grade it by sound), a separate **labelling tool** (every recorded strike with its picture,
+> camera verdict and sound analysis), and `python main.py flash` for the Nano. v0.3 added the
+> guided **Collect** screen, the **Library** and **Basic settings**. 360 tests pass.
+> **Not yet done:** none of it has run on the real striker rig with this app (it is tested against
+> a fake Nano, a fake microphone ring and real clips from earlier sessions), the sound grade has
+> never been checked on labelled real tiles, no pistonphone calibration, and every threshold in
+> `config.yaml` is provisional. See [`TODO.md`](TODO.md) and [`docs/STRIKER.md`](docs/STRIKER.md).
 
 > Part of the **Tile Sorting** automated inspection project (VIT Chennai,
 > BMEE497J/BMHA497J). This repo is deliberately standalone and reusable — the tile line
@@ -48,6 +51,9 @@ python -m acoustic_analysis
 ```
 
 Run the tests with `python -m pytest -q`.
+
+To strike tiles with the Arduino Nano you also need `arduino-cli` (`winget install ArduinoSA.CLI`, then open a
+new terminal) - see [`docs/STRIKER.md`](docs/STRIKER.md). `pyserial` is installed with the other dependencies.
 
 > **Before you record anything:** turn off Windows microphone *Enhancements* (automatic
 > gain, noise suppression). Sound Control Panel → *Recording* → your mic → *Properties* →
@@ -213,6 +219,60 @@ They are saved to `data/user_settings.yaml` and layered over `config.yaml`, whic
 **never rewritten** (so its explanatory comments stay). The full configuration is shown
 below as read-only text; edit `config.yaml` directly for anything not listed.
 
+### 8. Labelling recorded station strikes — a separate window
+
+```powershell
+python main.py label                   # the station's sessions + your own Test Tile sessions
+python main.py label D:\sessions       # a folder of sessions, or one session (several allowed)
+```
+
+![Labelling tool](docs/screenshots/08-label-tool.png)
+
+For recordings made by the tile-line station (a Pi or laptop that strikes tiles, records the
+microphone and the camera, and writes one folder per session). Pick any strike and see
+**everything known about it in one place**: the tile's picture; this app's sound analysis
+(pitch, brightness, how fast it fades, with where it sits among similar strikes); the camera's
+and the vision model's verdicts; the striker and distance sensor; and the station's decision.
+Three plots compare the strike with the typical tile and the typical striker-alone sound.
+
+Then label what the **tile** is like (good / cracked / corner broken / other defect / retest /
+discard, plus a look grade and a note). The tool jumps to the next strike still to do.
+
+- Labels go to `data/labels.json` (`paths.labels_file`). **Session folders are never
+  modified** — the station seals each one with a checksum manifest.
+- **Export labels (CSV)** writes one row per labelled strike with the labels, the camera's
+  reading and the sound features, ready for training.
+- Camera grades are shown as *information*, not as the answer: the camera's corner check is
+  not validated, so it can be wrong.
+- The sound analysis anchors on the known strike time (`strike:` in `config.yaml`, all
+  provisional), not on the generic impact detector.
+
+| Key | Does |
+|---|---|
+| G · C · B · O · R · D | good · cracked · corner broken · other defect · retest · discard |
+| 1 · 2 · 3 · 4 | look grade 3A · 3B · 4 · 5 |
+| Space | play the clip |
+| ← · → | previous / next strike |
+
+### 9. Test a tile with the striker — the first screen
+
+```powershell
+python main.py flash      # once: compile and upload the firmware to the Nano
+python main.py            # opens on Test Tile
+```
+
+![Test Tile](docs/screenshots/09-test-tile.png)
+
+*Shown with a fake Nano and clips from earlier station sessions; the grade here comes from a throwaway reference
+built from those strikes for the screenshot, not from labelled tiles.*
+
+Connect the Nano and the microphone, put a tile under the striker and press **Strike now** (or **A tile is coming**
+for auto mode). The app records the ring, analyses it and shows a verdict - GOOD, BORDERLINE, DEFECTIVE, RETEST,
+UNGRADED or NO TILE - with the reasons and three plots. Every test is saved so it can be labelled; once about 8 tiles
+are labelled good, **Build sound reference** in the labelling tool turns grading on. The grade only says whether a tile
+sounds *different* from your good ones. Full guide, wiring, verdicts and troubleshooting:
+**[`docs/STRIKER.md`](docs/STRIKER.md)**.
+
 ### Shortcuts
 
 | Key | Where | Does |
@@ -293,6 +353,11 @@ must ring* on the first real session.
 - **Grade** — rule-based GOOD / BORDERLINE / DEFECTIVE / RETEST against a reference
   profile, with the reasons.
 - **Learn** — synthetic-signal bench and glossary; every chart has a **?** explainer.
+- **Test Tile** — strike a tile with the Arduino Nano over USB, record the ring, see a verdict
+  and plots; `python main.py flash` compiles and uploads the Nano firmware (`striker/`).
+- **Labelling tool** — `python main.py label`: every recorded station strike with its tile
+  picture, camera / vision-model grade, sound analysis and label buttons in one window; builds
+  the good-tile sound reference the grade uses.
 - **Headless CLI** — `devices`, `analyze`, `noise`, `calibrate`, `export`.
 
 ## Project layout
@@ -307,15 +372,24 @@ acoustic_analysis/
     trigger (continuous sound trigger) · machine_noise (striker template + cleaning)
   features.py          conditioned_windows + extract_features -> one dict per clip
   segments.py          PURE snippet model for the Slice screen
+  strike_features.py   features of a clip with a KNOWN strike time (station clips, Test Tile)
+  strike_reference.py  PURE sound grade: distance from tiles labelled good + a self-check
+  tile_test.py         PURE: one strike clip -> features, verdict, curves (Test Tile)
+  label_model.py       PURE brain of the labelling tool (features, filters, info sections)
   classify/            reference.py (profile) + rules.py (grade)
-  io/                  recorder (+ SessionRecorder), audio_out, wavstore, dataset (SQLite),
+  io/                  nano_protocol / nano_link (USB-serial striker), nano_flash (arduino-cli),
+                       audio_ring (mic ring buffer), strike_log (saves tests),
+                       session_reader (read-only station sessions), label_store (labels.json),
+                       recorder (+ SessionRecorder), audio_out, wavstore, dataset (SQLite),
                        library (safe file ops + undo), session (clean + auto-file),
                        machine_profile (.npz), videoaudio (ffmpeg), snippets
   app/                 Tkinter GUI: theme, state, service, plots, widgets,
                        screens_collect (Collect), screens_library (Library),
                        screens_home, screens (Analyze/Compare/Filters/Noise/Label/
                        Export/Learn), screens_live (Monitor/Record/Calibrate/Settings),
-                       screens_video (Slice)
+                       screens_video (Slice), screens_tester (Test Tile), screens_hub (Label tiles),
+                       label_tool (separate labelling window)
+striker/               Nano firmware (copied from the tile-line project) + serial protocol spec
 tools/make_screenshots.py   regenerates docs/screenshots/ from the real app
 main.py                one-command launcher (bootstraps venv, then GUI or CLI)
 config.yaml            all tunable parameters (commented)

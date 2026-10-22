@@ -1,5 +1,33 @@
 # Claude Log
 
+## 2026-10-22 — v0.4: labelling tool, Nano striker, Test Tile screen
+
+Branch `feature/striker-and-labelling` (17 commits, plan in `docs/PLAN_striker_labelling.md`), 237 -> 360
+tests. Started from the owner's brief: a mechatronics-systems-design project that classifies and
+separates tiles by sound, with the Nano striker and the microphone plugged into one laptop, a single
+GUI, everything inside this repo, and a labelling GUI that shows all the data on each tile.
+
+- **Analysis first (read-only):** the 55 strike clips in the tile-line station's 2026-10-19 sessions (26
+  striker alone, 22 ToF tile strikes, 7 rest). Tile vs striker alone separates cleanly (energy at 1-3 kHz,
+  AUC 1.00). Good vs defective cannot be told without labels. Findings recorded in `TODO.md` (first six
+  tile strikes differ; `detect_impact` misfires on station clips; the camera's Rejects look false).
+- **Labelling tool:** `strike_features.py`, `io/session_reader.py` (read-only: sessions carry SHA-256
+  manifests), `io/label_store.py`, `label_model.py`, `app/label_tool.py`; labels live in `data/labels.json`.
+- **Striker:** `striker/` (firmware + protocol copied by hand), `io/nano_protocol.py`, `io/nano_flash.py`
+  (installed arduino-cli 1.5.1 with winget; a real compile works), `io/nano_link.py`, `io/audio_ring.py`.
+  Decision: only complete lines are processed (the original bridge's `readline()` could split a TAP across
+  a read timeout and lose it to the checksum).
+- **Sound grade + Test Tile:** `strike_reference.py` (distance from tiles labelled good; leave-one-out
+  self-check), `tile_test.py`, `io/strike_log.py` (tests saved in the station's session layout so they open in
+  the labelling tool), `app/screens_tester.py`, `app/screens_hub.py`; the app now opens on Test Tile.
+- **Bugs found by testing, fixed:** the link state stored the ToF distance under the wrong key; the tile
+  picture label was 18 px tall (a Tk Label's height is pixels once it shows an image); shortcut keys came out
+  as `[O]`/`[T]` for the corner-broken/other-defect buttons; Test Tile pre-selected a Bluetooth port.
+- **Not verified:** the real Nano upload, ToF, solenoid and microphone with this app; the grade on real labels.
+  One of four full test runs hit the known Tk `TclError` flake.
+- Left untouched: `.claude/CLAUDE-COMMON.md`, `PROJ_STARTER.md`. Nothing pushed; the Tile_Sorting submodule
+  pointer is not updated.
+
 ## 2026-09-08 — Repo bootstrap: standalone-app docs
 
 - Repo `Acoustic-Analysis` created by the owner as a fresh skeleton (MIT `LICENSE`,

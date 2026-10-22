@@ -4,6 +4,29 @@ Legend: 🔴 bug / rule violation | 🟡 incomplete feature | 🟢 not started |
 
 ## In Progress
 
+- [ ] 🟡 **Test Tile + striker: first run on the real rig (v0.4).** Built 2026-10-22 and tested
+  only against a scripted fake serial port, a fake microphone ring and real clips from the
+  2026-10-19 station sessions. On the first real run: `python main.py flash` with the Nano
+  plugged into the laptop (check it uploads at 115200 and boots: HELLO + HB), connect, watch the
+  tile-sensor distance (tile ~91 mm, empty 112-142 mm), press Strike now and check the clip really
+  has the strike about 0.5 s in (`strike.expect_s`; station onsets ran 0.47-0.57 s), the striker
+  sprung solenoid and VL53L0X have never been exercised together with this app. Check the coil
+  temperature at `striker.hold_pct`.
+
+- [ ] 🟡 **Label real tiles, build the sound reference, read its self-check (v0.4).** The sound
+  grade (`strike_reference.py`) compares a strike with tiles labelled good; it has never been built
+  from real labels. Label at least 8 good tiles (more is better, plus real cracked / chipped ones),
+  press Build sound reference, and read the leave-one-out numbers before trusting a verdict.
+  `strike.reference.*` (z_ok 3, z_bad 6, features) are provisional guesses.
+
+- [ ] 🟡 **Explain the first six tile strikes of the 2026-10-19 session.** S0001-S0009 of
+  `2026-10-19_18-44-39` sit apart from the other 16 (higher centroid, a ring that never fades 20 dB in
+  250 ms). Mic gain, tile or striker placement? Nobody has checked; the session note does not say.
+
+- [ ] 🟡 **`detect_impact` misfires on station clips.** On a tile clip it put the impact 0.3 s before the
+  loudest sample (the retract noise?). `strike_features` avoids it by trusting a quiet lead-in; the older
+  `features.extract_features` (Analyze screen) still uses `detect_impact`.
+
 - [ ] 🟡 **Collect screen: first run on the real rig.** Built 2026-10-08 (v0.3) and
   tested on synthetic signals only. On the first real session: run Setup A + B and read the
   repeatability score; tune the Sensitivity slider and `machine.min_residual_snr_db`; check
@@ -64,6 +87,26 @@ Legend: 🔴 bug / rule violation | 🟡 incomplete feature | 🟢 not started |
 - [ ] 🟢 Verify audio-device handling on Linux/macOS (Windows-only so far)
 
 ## Done
+
+- [x] **v0.4 - Labelling tool, Nano striker and Test Tile screen** (2026-10-22, branch
+  `feature/striker-and-labelling`, plan in `docs/PLAN_striker_labelling.md`, 360 tests). One
+  commit per step:
+  - Labelling tool (`python main.py label`): `strike_features.py` (strike features anchored on a known
+    strike time, f55c2e8), `io/session_reader.py` (read-only loader for station sessions, 21ab9c8),
+    `io/label_store.py` (labels.json, atomic writes, CSV export, aee04a9), `label_model.py` (da207a9),
+    `app/label_tool.py` (a334c85, 821bad2, 879ef2d).
+  - Striker: `striker/` firmware + protocol spec copied from the tile-line project (89b9db5),
+    `io/nano_protocol.py` (c3ab3c1), `io/nano_flash.py` + `python main.py flash` - a real compile for
+    AVR works, 17,308 B flash / 1,397 B RAM (fbc0b39), `io/nano_link.py` (4f86ac0),
+    `io/audio_ring.py` (00ce530).
+  - Sound grade: `strike_reference.py` + Build sound reference button + leave-one-out self-check (043daa9).
+  - Test Tile: `tile_test.py` + `io/strike_log.py` (34dd5a8), `app/screens_tester.py` (864d45a), the
+    Label tiles hub screen and the app opening on Test Tile (a0d8c2e).
+  - Analysed the 55 real strike clips from 2026-10-19: tile vs striker alone separates cleanly (energy at
+    1-3 kHz, AUC 1.00); good vs defective cannot be told without labels (the camera's 13/22 Rejects with
+    corner fill 0.89-0.97 look like false rejects, so it is not ground truth).
+  - Not verified: any of it on the real rig (see In Progress). Found a real bug while testing: the link's
+    heartbeat state stored the distance under a different key than it was initialised with.
 
 - [x] **v0.2 - Slice screen: tap-test video -> labelled snippets** (2026-09-20). New pure
   modules `dsp/segmentation.py` (strike detection over a whole take + min/max envelope

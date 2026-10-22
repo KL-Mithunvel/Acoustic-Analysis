@@ -4,6 +4,8 @@
 Run with any Python - no virtual environment needs to be active:
 
     python main.py                     # first run: build venv + install deps, then GUI
+    python main.py label [folder]      # the tile labelling tool (station sessions)
+    python main.py flash [--port COMx] # compile + upload the Nano striker firmware
     python main.py devices             # forward to the headless CLI
     python main.py analyze clip.wav
     python main.py analyze clips/ --export features.csv
@@ -63,6 +65,12 @@ def main() -> int:
     # Inside the project venv from here on.
     os.chdir(ROOT)
     args = sys.argv[1:]
+    if args and args[0] == "label":               # python main.py label [sessions-folder]
+        from acoustic_analysis.app.label_tool import run as label_run
+        return label_run(args[1:])
+    if args and args[0] == "flash":               # python main.py flash [--port COMx] [--compile-only]
+        from acoustic_analysis.io.nano_flash import main as flash_main
+        return flash_main(args[1:])
     if args:
         from acoustic_analysis.cli import main as cli_main
         return cli_main(args)

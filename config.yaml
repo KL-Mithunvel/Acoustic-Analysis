@@ -131,9 +131,58 @@ video:
     post_ms: 700.0           # ring + decay kept after the strike
     guard_ms: 20.0           # stop a window this far short of the next strike
 
+strike:
+  # Features of a clip whose strike time is KNOWN (station sessions: the Nano's TAP puts
+  # the strike about 0.5 s into a 1.5 s clip). Used by the labelling tool and Test Tile.
+  # All provisional - tuned on 55 clips from one rig, no labels yet.
+  clip_s: 1.5              # length of the clip cut around a strike (Test Tile screen); the strike lands at expect_s
+  expect_s: 0.5            # where in the clip the strike is expected
+  lead_in_s: 0.35          # quiet stretch before the strike, used as the noise floor
+  onset_mult: 8.0          # onset = first sample after lead_in above this x lead-in RMS
+  ring_ms: [5, 250]        # window after the onset that is analysed (skips the click)
+  band_hz: [100, 12000]    # band for the spectral summary
+  decay_band_hz: [300, 12000]
+  decay_fit_ms: [3, 120]   # span of the envelope line fit
+  smooth_ms: 2.0           # envelope smoothing
+  t20_ref_ms: 5.0          # t20 = time for the envelope to fall 20 dB below its value here
+  fraction_edges_hz: [1000, 3000, 6000]   # energy fractions: below / between / above these
+  # Sound grade of a tile = how far its strike features sit from tiles YOU labelled good
+  # (labelling tool -> "Build sound reference"). Provisional until checked on real labels.
+  reference:
+    features: [centroid_hz, f_low, f_mid, f_high, f_top, slope_db_ms]
+    min_good: 8              # fewer labelled-good tiles than this -> UNGRADED
+    z_ok: 3.0                # robust z (distances in "typical spreads") up to here = GOOD
+    z_bad: 6.0               # beyond this = DEFECTIVE; in between = BORDERLINE
+    min_sigma_frac: 0.05     # a feature's spread is never taken as less than this x |median|
+    min_snr_db: 20           # a weaker strike is RETEST, not graded
+
+striker:
+  # The Arduino Nano that strikes the tile, on USB serial from this computer (striker/README.md).
+  arduino_cli: null              # path to arduino-cli; null = look on PATH, then C:\Program Files\Arduino CLI
+  sketch_dir: striker/nano_firmware
+  build_dir: data/build/nano
+  fqbn: "arduino:avr:nano:cpu=atmega328"        # new bootloader, uploads at 115200 (worked on the CH340 clone)
+  fqbn_alt: "arduino:avr:nano:cpu=atmega328old" # old bootloader, 57600: tried if the first says "not in sync"
+  core: "arduino:avr"
+  libraries: ["VL53L0X"]         # Pololu - the ToF sensor library the sketch #includes
+  usb_vids: ["1A86", "0403", "2341", "2A03", "10C4"]   # CH340, FTDI, Arduino, Arduino.org, CP210x
+  compile_timeout_s: 300
+  upload_timeout_s: 90
+  install_timeout_s: 900
+  # serial link (io/nano_link.py)
+  baud: 115200
+  ping_s: 0.5                    # keep-alive; the Nano's own watchdog stops the striker after 2 s of silence
+  stale_s: 3.0                   # no valid line from the Nano for this long = link down
+  hold_pct: 30                   # coil hold power while the striker is up (heat vs holding force)
+  tile_mm: 100                   # a ToF reading at or under this is a tile (the firmware's own limit)
+
 paths:
   data_dir: data
   recordings_dir: data/recordings
   database: data/acoustic_analysis.sqlite
   exports_dir: data/exports
   reference_profile: data/reference_profile.json
+  sessions_dir: ../data/master/sessions   # station data-collection sessions (read-only; the labelling tool)
+  labels_file: data/labels.json           # human labels for station strikes (never written into a session)
+  strike_reference: data/strike_reference.json   # sound reference built from tiles labelled good
+  test_sessions_dir: data/sessions         # every strike the Test Tile screen hears, in the station's session layout

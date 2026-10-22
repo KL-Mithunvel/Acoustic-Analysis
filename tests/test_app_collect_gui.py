@@ -33,8 +33,8 @@ def _screen(win, title):
     return next(s for s in win.screens if s.title == title)
 
 
-def test_app_opens_on_collect_and_advanced_is_collapsed(win):
-    assert win._screen_title.get() == "Collect"
+def test_app_opens_on_test_tile_and_advanced_is_collapsed(win):
+    assert win._screen_title.get() == "Test Tile"
     assert win._group_open["ADVANCED"] is False
     win._goto("Slice")                                   # navigating into it opens the group
     assert win._group_open["ADVANCED"] is True

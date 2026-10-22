@@ -42,3 +42,6 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+# ...and the report's figures (regenerate with tools/make_report_figures.py)
+!docs/report_figures/
+!docs/report_figures/*.png
