@@ -45,3 +45,7 @@ Thumbs.db
 # ...and the report's figures (regenerate with tools/make_report_figures.py)
 !docs/report_figures/
 !docs/report_figures/*.png
+# ...and the final report's figures and photos (tools/make_final_report_figures.py, make_report_diagrams.py)
+!docs/final_report_figures/
+!docs/final_report_figures/*.png
+!docs/final_report_figures/*.jpg
