@@ -144,7 +144,147 @@ def main() -> None:
     win._goto("Settings")
     grab(win, "07-settings")
 
+    extra_screens(win, cfg, tmp)
     win._on_close()
+    label_tool_shots(cfg, tmp)
+
+
+def _pump(win, predicate, timeout_s=30):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        win.update()
+        win.ctx.service.poll()
+        if predicate():
+            return True
+        time.sleep(0.03)
+    return False
+
+
+def extra_screens(win, cfg, tmp):
+    """Home, Learn, Label tiles, Compare, Filters, Noise, Label, Calibrate, Monitor, Record, Slice.
+
+    Demo data only. Monitor and Record are shown idle (no microphone is opened) and
+    Calibrate never presses Apply, so config.yaml is not touched.
+    """
+    import subprocess
+
+    import soundfile as sf
+    from acoustic_analysis.app.state import ClipData
+    from acoustic_analysis.io import videoaudio
+    from tests.synth import make_tap_sequence
+
+    # three analysed clips: a good ring, a shorter lower "cracked" ring, and room noise alone
+    kinds = (("good-01", dict(tile=0.30, seed=70, ring_hz=2200, tau=0.05)),
+             ("cracked-01", dict(tile=0.30, seed=71, ring_hz=1700, tau=0.015)),
+             ("room-noise", dict(tile=0.0, seed=72)))
+    ids = []
+    for name, kw in kinds:
+        ids.append(win.ctx.state.add_clip(ClipData(name=name, samples=demo_clip(cfg, **kw), fs=FS, source="recorded")))
+        win.ctx.service.submit(ids[-1])
+    _pump(win, lambda: all(win.ctx.state.clip(i).features is not None for i in ids))
+
+    win._goto("Home")
+    grab(win, "10-home")
+    win._goto("Learn")
+    grab(win, "11-learn")
+    win._goto("Label tiles")
+    grab(win, "12-label-tiles-hub")
+
+    compare = next(s for s in win.screens if s.title == "Compare")
+    win.ctx.state.select(ids[:2])
+    win._goto("Compare")
+    compare.refresh()
+    for i in ids[:2]:
+        compare.clip_list.selection_set(i)
+    grab(win, "13-compare")
+
+    win.ctx.state.select([ids[0]])
+    win._goto("Filters")
+    grab(win, "14-filters")
+
+    noise = next(s for s in win.screens if s.title == "Noise")
+    win._goto("Noise")
+    noise.refresh()
+    noise.noise_pick.current(2)
+    noise.target_pick.current(0)
+    noise.refresh()
+    grab(win, "15-noise")
+
+    win._goto("Label")
+    grab(win, "16-label")
+
+    calib = next(s for s in win.screens if s.title == "Calibrate")
+    t = np.arange(2 * FS) / FS
+    calib._tone, calib._fs = 0.05 * np.sin(2 * np.pi * 1000 * t), FS
+    calib.src.set("demo 1 kHz tone (synthetic)")
+    calib._compute()                       # never _apply(): that would rewrite config.yaml
+    win._goto("Calibrate")
+    grab(win, "17-calibrate")
+
+    win._goto("Monitor")
+    grab(win, "18-monitor-idle")
+    win._goto("Record")
+    grab(win, "19-record-idle")
+
+    if videoaudio.is_available():
+        wav, video = tmp / "track.wav", tmp / "taps.mp4"
+        sf.write(wav, make_tap_sequence(FS, [0.6, 1.5, 2.4, 3.3], duration_s=4.0).astype(np.float32), FS, subtype="FLOAT")
+        subprocess.run([videoaudio.ffmpeg_exe(), "-y", "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "testsrc=size=640x360:rate=15:duration=4", "-i", str(wav), "-shortest", "-c:v", "libx264",
+                        "-pix_fmt", "yuv420p", "-c:a", "pcm_s16le", str(video)], check=True, capture_output=True)
+        sl = next(s for s in win.screens if s.title == "Slice")
+        win._goto("Slice")
+        sl.load_media(video)
+        _pump(win, lambda: sl._samples is not None)
+        sl.find_strikes()
+        sl.tree.selection_set(("1", "2"))
+        sl.grade.set("3A")
+        sl.defect.set("good")
+        sl.apply_labels()
+        sl.tree.selection_set(("3", "4"))
+        sl.grade.set("4")
+        sl.defect.set("cracked")
+        sl.apply_labels()
+        sl.tree.selection_set(("1",))
+        grab(win, "20-slice")
+
+
+def label_tool_shots(cfg, tmp):
+    """The labelling tool on the real 2026-10-19 station sessions with the real labels (a copy: nothing is written back)."""
+    import shutil
+
+    from acoustic_analysis.app.label_tool import LabelWindow
+
+    sessions = ROOT.parent / "data" / "master" / "sessions"
+    labels = ROOT / "data" / "labels.json"
+    if not sessions.is_dir() or not labels.is_file():
+        print("skipped the labelling tool: no sessions or labels.json")
+        return
+    shutil.copy2(labels, tmp / "labels.json")
+    cfg = dict(cfg, paths={**cfg["paths"], "strike_reference": str(tmp / "strike_reference.json")})
+    w = LabelWindow(cfg, sessions_dir=sessions, labels_path=tmp / "labels.json")
+    w.dialog = lambda title, text: None
+    _pump_label(w)
+    key = "2026-10-19_18-44-39/S0024"            # a tile labelled cracked
+    if w.tree.exists(key):
+        w.tree.selection_set(key)
+        w.tree.focus(key)
+        w.tree.see(key)
+    _pump_label(w)
+    grab(w, "21-label-tool-labelled")
+    w.destroy()
+
+
+def _pump_label(w, timeout_s=60):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        w.update()
+        if w.status.get().startswith("Ready"):
+            break
+        time.sleep(0.05)
+    for _ in range(20):
+        w.update()
+        time.sleep(0.05)
 
 
 if __name__ == "__main__":

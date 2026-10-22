@@ -30,8 +30,9 @@ Data: station sessions of 2026-10-19, labelled 2026-10-22. Figures: `docs/report
 
 ## 3. The app (screenshots)
 
-Screens 1-7 were captured from the real app on **synthetic demo data** (`tools/make_screenshots.py`), so the numbers
-in them are not tile measurements. Screens 8-9 use real clips from the 2026-10-19 sessions.
+Screens 1-7 and 10-20 were captured from the real app on **synthetic demo data** (`tools/make_screenshots.py`), so the
+numbers in them are not tile measurements. Screens 8, 9 and 21 use real clips from the 2026-10-19 sessions. Monitor and
+Record are shown idle: no microphone, Nano or tile was connected when they were captured.
 
 | | |
 |---|---|
@@ -44,6 +45,30 @@ in them are not tile measurements. Screens 8-9 use real clips from the 2026-10-1
 
 **Labelling tool** (real station data). Tile picture, camera verdict, the three sound plots (what it sounds like,
 which pitches ring, how fast it fades, with the striker-alone and typical-tile curves behind) and the label buttons.
+
+### 3.1 Remaining screens
+
+| | |
+|---|---|
+| ![Home](report_figures/app_10-home.png) **Home.** Launcher with the session summary: clip count, last grade, calibration and reference state, recent clips. | ![Learn](report_figures/app_11-learn.png) **Learn.** The explanations behind every "?" panel, with a synthetic decaying tone to play with. The text column is narrow in this build. |
+| ![Label tiles hub](report_figures/app_12-label-tiles-hub.png) **Label tiles.** The three-step explainer, label counts, and the button that opens the labelling tool. | ![Compare](report_figures/app_13-compare.png) **Compare** (ADVANCED). Two clips overlaid: spectrum, 1/3-octave shape and energy decay, with a list of the biggest feature differences. Here a good and a cracked demo clip. |
+| ![Filters](report_figures/app_14-filters.png) **Filters.** Band-pass / notch / weighting chain, its frequency response and original vs filtered signal. | ![Noise](report_figures/app_15-noise.png) **Noise.** Denoise preview from a noise-profile clip, plus the environment summary (Leq, percentiles, NC, tones). |
+| ![Label](report_figures/app_16-label.png) **Label** (ADVANCED). Class, grader and notes for the selected clip, saved to the dataset. | ![Calibrate](report_figures/app_17-calibrate.png) **Calibrate.** Counts-per-pascal from a reference tone. Here a synthetic 1 kHz tone; **Apply was not pressed**, so nothing was written to the config. |
+| ![Monitor](report_figures/app_18-monitor-idle.png) **Monitor** (idle). Live level and spectrogram; needs a microphone. | ![Record](report_figures/app_19-record-idle.png) **Record** (idle). Manual or RMS-triggered recording; needs a microphone. |
+
+![Slice](report_figures/app_20-slice.png)
+
+**Slice.** A tap-test video (here a generated test video with four synthetic taps): the whole take with detected
+strikes, the detail view, and the snippet table with grade tier and defect labels. Slice has still never seen real
+footage.
+
+![Labelling tool with labels](report_figures/app_21-label-tool-labelled.png)
+
+**Labelling tool, with the real labels.** The 58 strikes of the 2026-10-19 sessions, 22 labelled (green rows). Selected:
+S0024, labelled cracked, with its tile picture, the camera's verdict (Reject, corner broken: yes), this app's sound
+analysis and the three plots against the typical striker-alone (orange) and tile (blue) curves. The sound grade
+reads UNGRADED because no sound reference was built in this run (a copy of the labels was used and nothing was saved
+back).
 
 ## 4. Data used
 
@@ -174,7 +199,7 @@ the microphone, find out why S0001-S0009 differ, then rebuild the reference and 
 ## 9. Reproducing the figures
 
 ```powershell
-venv\Scripts\python tools\make_screenshots.py       # app screens 1-9 (needs a visible desktop)
+venv\Scripts\python tools\make_screenshots.py       # app screens 1-7 and 10-21 (needs a visible desktop; 8-9 were captured earlier)
 venv\Scripts\python tools\striker_subtraction.py    # figure 06 + section 6.2 numbers
 venv\Scripts\python tools\compare_good_cracked.py   # figure 05 (before/after)
 venv\Scripts\python tools\test_steady_peak.py       # figure 07 + section 6.3 numbers
